@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
+from app_resources import data_path
 from db_manager import ExecutionResult
 
 
@@ -31,8 +32,8 @@ class HistoryEntry:
 
 
 class ExecutionHistoryManager:
-    def __init__(self, history_path: str | Path = HISTORY_FILE, max_entries: int = 500):
-        self.history_path = Path(history_path)
+    def __init__(self, history_path: str | Path | None = None, max_entries: int = 500):
+        self.history_path = Path(history_path) if history_path else data_path(HISTORY_FILE)
         self.max_entries = max_entries
 
     def load(self) -> list[dict]:
@@ -69,6 +70,7 @@ class ExecutionHistoryManager:
         if len(history) > self.max_entries:
             history = history[-self.max_entries:]
 
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
         with self.history_path.open("w", encoding="utf-8") as file:
             json.dump({"history": history}, file, ensure_ascii=False, indent=2)
 

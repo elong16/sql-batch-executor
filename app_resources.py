@@ -1,5 +1,26 @@
+import sys
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent
-APP_ICON_PATH = BASE_DIR / "assets" / "app_icon.svg"
+def app_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def resource_dir() -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent
+
+
+def resource_path(*parts: str) -> Path:
+    return resource_dir().joinpath(*parts)
+
+
+def data_path(filename: str) -> Path:
+    return app_dir() / filename
+
+
+BASE_DIR = app_dir()
+APP_ICON_PATH = resource_path("assets", "app_icon.svg")
