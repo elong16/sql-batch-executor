@@ -13,6 +13,7 @@ dist/
 
 connections.json
 execution_history.json
+preferences.json
 *_test.json
 *.log
 

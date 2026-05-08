@@ -10,7 +10,7 @@ from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtSvg import QSvgRenderer
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 APP_NAME = "SQL批量执行器"
 DIST_DIR = ROOT / "dist"
 BUILD_DIR = ROOT / "build"

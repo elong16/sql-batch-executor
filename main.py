@@ -12,13 +12,16 @@ if sys.platform == "win32":
 app = QApplication(sys.argv)
 
 from qfluentwidgets import setTheme, Theme, setThemeColor
-from app_resources import APP_ICON_PATH
-from ui_theme import PRIMARY
+from sql_batch_executor.app.resources import APP_ICON_PATH
+from sql_batch_executor.core.preferences import PreferenceManager
+from sql_batch_executor.ui import theme
+
 setTheme(Theme.LIGHT)
-setThemeColor(PRIMARY)
+theme.apply_theme_color(PreferenceManager().theme_color())
+setThemeColor(theme.PRIMARY)
 app.setWindowIcon(QIcon(str(APP_ICON_PATH)))
 
-from gui import MainWindow
+from sql_batch_executor.ui.main_window import MainWindow
 
 win = MainWindow()
 win.show()

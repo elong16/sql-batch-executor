@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import Sequence
 
-from config_manager import ConfigManager, ConnectionConfig
-from db_manager import DatabaseClient, ExecutionResult, MySqlClient
-from history_manager import ExecutionHistoryManager, HistoryEntry
-from sql_safety import SqlSafetyChecker
+from sql_batch_executor.core.config_manager import ConfigManager, ConnectionConfig
+from sql_batch_executor.core.history_manager import ExecutionHistoryManager, HistoryEntry
+from sql_batch_executor.core.sql_safety import SqlSafetyChecker
+from sql_batch_executor.database.manager import DatabaseClient, ExecutionResult, MySqlClient
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,8 @@
 import pymysql
 from dataclasses import dataclass, field
 from typing import List, Protocol, Tuple
-from config_manager import ConnectionConfig
+
+from sql_batch_executor.core.config_manager import ConnectionConfig
 
 
 @dataclass

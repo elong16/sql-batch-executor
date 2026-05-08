@@ -4,8 +4,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
-from app_resources import data_path
-from db_manager import ExecutionResult
+from sql_batch_executor.app.resources import data_path
+from sql_batch_executor.database.manager import ExecutionResult
 
 
 HISTORY_FILE = "execution_history.json"

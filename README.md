@@ -10,6 +10,7 @@
 - 检测 `DROP`、`DELETE`、`UPDATE`、`TRUNCATE` 等危险 SQL 并二次确认
 - 保存执行历史到本地 `execution_history.json`
 - 自定义 Fluent 风格窗口标题栏和应用图标
+- 支持切换主题色，并保存到本地偏好配置
 
 ## 运行源码
 
@@ -62,9 +63,25 @@ git push
 git_push.bat "Update UI"
 ```
 
+## 项目结构
+
+```text
+.
+├── main.py                         # 源码启动入口
+├── sql_batch_executor/             # 应用主包
+│   ├── app/                        # 资源路径、运行目录等应用级工具
+│   ├── core/                       # 配置、历史、业务服务、SQL 安全检查
+│   ├── database/                   # 数据库客户端和执行结果模型
+│   └── ui/                         # PyQt 界面、主题和后台线程 worker
+├── assets/                         # 图标等静态资源
+├── scripts/                        # 构建脚本
+├── requirements.txt                # 运行依赖
+└── requirements-build.txt          # 打包依赖
+```
+
 ## 配置文件
 
-连接配置保存到 `connections.json`，执行历史保存到 `execution_history.json`。
+连接配置保存到 `connections.json`，执行历史保存到 `execution_history.json`，界面偏好保存到 `preferences.json`。
 
 - 源码运行时：文件保存在项目根目录
 - EXE 运行时：文件保存在 EXE 同目录

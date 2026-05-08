@@ -1,7 +1,7 @@
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 
-from config_manager import ConnectionConfig
-from db_manager import DatabaseClient, ExecutionResult
+from sql_batch_executor.core.config_manager import ConnectionConfig
+from sql_batch_executor.database.manager import DatabaseClient, ExecutionResult
 
 
 class TestConnectionWorker(QObject):

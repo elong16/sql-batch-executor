@@ -1,5 +1,5 @@
 @echo off
-cd /d D:\pythonProject\sql-batch-executor
+cd /d "%~dp0"
 if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" main.py
 ) else (

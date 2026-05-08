@@ -18,7 +18,7 @@ echo [2/3] Installing build dependencies...
 if errorlevel 1 goto failed
 
 echo [3/3] Building exe...
-"%PYTHON%" build_exe.py
+"%PYTHON%" scripts\build_exe.py
 if errorlevel 1 goto failed
 
 echo.

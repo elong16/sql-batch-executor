@@ -3,7 +3,7 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import List
 
-from app_resources import data_path
+from sql_batch_executor.app.resources import data_path
 
 CONFIG_FILE = "connections.json"
 
