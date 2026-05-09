@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /d D:/pythonProject/sql-batch-executor)",
+      "Bash(python scripts/build_exe.py)",
+      "Bash(D:/pythonProject/sql-batch-executor/.venv/Scripts/python.exe *)",
+      "Bash(chardetect D:/pythonProject/sql-batch-executor/build_exe.bat)"
+    ]
+  }
+}

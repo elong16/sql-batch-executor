@@ -22,7 +22,7 @@ echo [3/3] Building exe...
 if errorlevel 1 goto failed
 
 echo.
-echo Build finished. Output: dist\SQL批量执行器.exe
+echo Build finished. Output: dist\SQLBatchExecutor.exe
 pause
 exit /b 0
 
