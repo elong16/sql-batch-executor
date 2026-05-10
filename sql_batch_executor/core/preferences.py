@@ -19,7 +19,7 @@ class PreferenceManager:
         try:
             with self.preferences_path.open("r", encoding="utf-8") as file:
                 data = json.load(file)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             return {}
         return data if isinstance(data, dict) else {}
 
@@ -35,4 +35,11 @@ class PreferenceManager:
         if not color_key:
             color_key = DEFAULT_THEME_COLOR
         self.preferences["theme_color"] = color_key
+        self.save()
+
+    def window_geometry(self) -> dict | None:
+        return self.preferences.get("window_geometry")
+
+    def set_window_geometry(self, geometry: dict):
+        self.preferences["window_geometry"] = geometry
         self.save()

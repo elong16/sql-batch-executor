@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem, QAbstractItemView, QMenu, QDialog, QPushButton,
 )
 from PyQt5.QtCore import Qt, QEvent, QThread
-from PyQt5.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QKeyEvent, QCursor
 
 from qfluentwidgets import (
     CardWidget, SimpleCardWidget,
@@ -22,7 +22,7 @@ from sql_batch_executor.app.resources import APP_ICON_PATH
 from sql_batch_executor.core.config_manager import ConnectionConfig
 from sql_batch_executor.core.preferences import PreferenceManager
 from sql_batch_executor.core.services import ConnectionService
-from sql_batch_executor.database.manager import ExecutionResult
+from sql_batch_executor.database.manager import ExecutionResult, StatementExecutionResult
 from sql_batch_executor.ui import theme
 from sql_batch_executor.ui.workers import SqlExecutionWorker, TestConnectionWorker
 
@@ -57,7 +57,7 @@ class TitleControlButton(QPushButton):
                 border = bg
                 icon = QColor("#ffffff")
             else:
-                bg = QColor("#dbeafe" if is_pressed else "#eef4ff")
+                bg = QColor(theme.PRIMARY_SOFT if is_pressed else theme.APP_BACKGROUND)
                 border = QColor(0, 0, 0, 0)
                 icon = QColor(theme.PRIMARY_PRESSED if is_pressed else theme.PRIMARY)
 
@@ -375,7 +375,7 @@ class ExecSelectDialog(Dialog):
                 }}
                 SimpleCardWidget:hover {{
                     background: {theme.SURFACE_SUBTLE};
-                    border-color: #bfdbfe;
+                    border-color: {theme.PRIMARY_BORDER};
                 }}
             """)
             card_lay = QHBoxLayout(card)
@@ -448,7 +448,7 @@ class ConnCard(CardWidget):
             }}
             #connCard:hover {{
                 background: {theme.SIDEBAR_SURFACE};
-                border-color: #b8c2d1;
+                border-color: {theme.PRIMARY_BORDER};
             }}
         """)
         self._index = index
@@ -460,7 +460,15 @@ class ConnCard(CardWidget):
 
         dot = QLabel()
         dot.setFixedSize(8, 8)
-        dot.setStyleSheet(f"background: {theme.SUCCESS if conn.enabled else '#cbd5e1'}; border-radius: 4px;")
+        if conn.last_test_ok is False:
+            dot_color = theme.DANGER
+        elif conn.last_test_ok is True:
+            dot_color = theme.SUCCESS
+        elif conn.enabled:
+            dot_color = theme.SUCCESS
+        else:
+            dot_color = "#cbd5e1"
+        dot.setStyleSheet(f"background: {dot_color}; border-radius: 4px;")
         lay.addWidget(dot, 0, Qt.AlignTop)
 
         col = QVBoxLayout()
@@ -468,10 +476,23 @@ class ConnCard(CardWidget):
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
         name = BodyLabel(conn.name or conn.host)
-        theme.set_label_color(name, theme.TEXT_PRIMARY if conn.enabled else theme.TEXT_MUTED)
+        name_color = theme.TEXT_PRIMARY if conn.enabled else theme.TEXT_MUTED
+        if conn.last_test_ok is False:
+            name_color = theme.DANGER
+        theme.set_label_color(name, name_color)
         top_row.addWidget(name, 1)
-        status = CaptionLabel("启用" if conn.enabled else "停用")
-        theme.set_label_color(status, theme.SUCCESS if conn.enabled else theme.TEXT_SUBTLE)
+        if conn.last_test_ok is False:
+            status = CaptionLabel("失败")
+            theme.set_label_color(status, theme.DANGER)
+        elif conn.last_test_ok is True:
+            status = CaptionLabel("启用")
+            theme.set_label_color(status, theme.SUCCESS)
+        elif conn.enabled:
+            status = CaptionLabel("启用")
+            theme.set_label_color(status, theme.SUCCESS)
+        else:
+            status = CaptionLabel("停用")
+            theme.set_label_color(status, theme.TEXT_SUBTLE)
         top_row.addWidget(status)
         col.addLayout(top_row)
         sub = CaptionLabel(f"{conn.host}:{conn.port} · {conn.database or '未选择数据库'}")
@@ -514,8 +535,30 @@ class MainWindow(FramelessWindow):
         self._current_tab = 0
         self._threads = []
         self._root_lay = None
+        self._current_worker = None
 
         self._build()
+        self._restore_window_geometry()
+
+    def _restore_window_geometry(self):
+        geom = self.preferences.window_geometry()
+        if geom:
+            try:
+                self.restoreGeometry(bytes.fromhex(geom))
+                # Validate restored geometry is on screen
+                screen = QApplication.primaryScreen()
+                if screen and not screen.availableGeometry().intersects(self.geometry()):
+                    self.resize(1320, 840)
+            except Exception:
+                pass
+
+    def _save_window_geometry(self):
+        geom = self.saveGeometry().toHex().data().decode('ascii')
+        self.preferences.set_window_geometry(geom)
+
+    def closeEvent(self, event):
+        self._save_window_geometry()
+        super().closeEvent(event)
 
     def _track_thread(self, thread: QThread):
         self._threads.append(thread)
@@ -589,6 +632,12 @@ class MainWindow(FramelessWindow):
 
         sql_text = self.sql_input.toPlainText() if hasattr(self, "sql_input") else ""
         results = list(self.results)
+        search_text = self.search_edit.text() if hasattr(self, "search_edit") else ""
+        continue_on_error = (
+            self.continue_on_error_check.isChecked()
+            if hasattr(self, "continue_on_error_check")
+            else False
+        )
 
         preset = theme.apply_theme_color(color_key)
         setThemeColor(theme.PRIMARY)
@@ -599,7 +648,11 @@ class MainWindow(FramelessWindow):
         self._current_tab = 0
         self._build()
         self.sql_input.setPlainText(sql_text)
+        if hasattr(self, "continue_on_error_check"):
+            self.continue_on_error_check.setChecked(continue_on_error)
         self.results = results
+        if hasattr(self, "search_edit"):
+            self.search_edit.setText(search_text)
         if self.results:
             self._show_results()
 
@@ -725,7 +778,15 @@ class MainWindow(FramelessWindow):
         add_btn.clicked.connect(self._on_add)
         sec_row.addWidget(add_btn)
         sb_lay.addLayout(sec_row)
-        sb_lay.addSpacing(12)
+        sb_lay.addSpacing(8)
+
+        self.search_edit = LineEdit()
+        self.search_edit.setPlaceholderText("搜索连接…")
+        self.search_edit.setClearButtonEnabled(True)
+        self.search_edit.setFixedHeight(32)
+        self.search_edit.textChanged.connect(self._on_conn_search)
+        sb_lay.addWidget(self.search_edit)
+        sb_lay.addSpacing(8)
 
         self.conn_scroll = QScrollArea()
         self.conn_scroll.setWidgetResizable(True)
@@ -833,6 +894,10 @@ class MainWindow(FramelessWindow):
         ed_title_col.addWidget(ed_caption)
         ed_hdr.addLayout(ed_title_col)
         ed_hdr.addStretch()
+        self.continue_on_error_check = CheckBox("出错继续")
+        self.continue_on_error_check.setFixedHeight(32)
+        self.continue_on_error_check.setToolTip("单条 SQL 失败后继续执行后续 SQL")
+        ed_hdr.addWidget(self.continue_on_error_check)
         self.exec_btn = PrimaryPushButton("批量执行")
         self.exec_btn.setFixedSize(110, 34)
         self.exec_btn.setStyleSheet(theme.primary_button_qss())
@@ -853,7 +918,7 @@ class MainWindow(FramelessWindow):
                 font-family: {theme.EDITOR_FONT};
                 font-size: 14px;
                 color: {theme.EDITOR_TEXT};
-                selection-background-color: #bfdbfe;
+                selection-background-color: {theme.SELECTED_BG};
             }}
             QPlainTextEdit:focus {{
                 border: 1px solid {theme.PRIMARY};
@@ -877,11 +942,20 @@ class MainWindow(FramelessWindow):
                 border-bottom: 1px solid {theme.BORDER};
             }}
         """)
-        pf_lay = QVBoxLayout(self.progress_frame)
+        pf_lay = QHBoxLayout(self.progress_frame)
         pf_lay.setContentsMargins(28, 10, 28, 10)
-        pf_lay.setSpacing(6)
+        pf_lay.setSpacing(12)
         self.progress = ProgressBar()
-        pf_lay.addWidget(self.progress)
+        pf_lay.addWidget(self.progress, 1)
+        self.cancel_btn = TransparentPushButton("取消")
+        self.cancel_btn.setFixedSize(60, 28)
+        self.cancel_btn.setStyleSheet(f"""
+            TransparentPushButton {{ color: {theme.DANGER}; border-radius: 6px; }}
+            TransparentPushButton:hover {{ background: {theme.DANGER_SOFT}; }}
+        """)
+        self.cancel_btn.hide()
+        self.cancel_btn.clicked.connect(self._on_cancel_execute)
+        pf_lay.addWidget(self.cancel_btn)
         self.status_label = CaptionLabel("就绪")
         theme.set_label_color(self.status_label, theme.TEXT_SUBTLE)
         pf_lay.addWidget(self.status_label)
@@ -943,7 +1017,7 @@ class MainWindow(FramelessWindow):
         self.sidebar_count_label.setText(f"{total} 个")
         self.sidebar_enabled_label.setText(f"{enabled} 启用")
 
-    def _refresh_conn_list(self):
+    def _refresh_conn_list(self, filter_text: str = ""):
         while self.conn_layout.count() > 1:
             item = self.conn_layout.takeAt(0)
             w = item.widget()
@@ -960,9 +1034,15 @@ class MainWindow(FramelessWindow):
             self.conn_layout.insertWidget(0, lbl)
             return
 
+        keyword = filter_text.lower().strip()
         for i, conn in enumerate(conns):
+            if keyword and keyword not in conn.name.lower() and keyword not in conn.host.lower() and keyword not in (conn.database or "").lower():
+                continue
             card = ConnCard(conn, i, self._show_conn_menu)
-            self.conn_layout.insertWidget(i, card)
+            self.conn_layout.insertWidget(self.conn_layout.count() - 1, card)
+
+    def _on_conn_search(self, text: str):
+        self._refresh_conn_list(text)
 
     def _show_conn_menu(self, index: int):
         conn = self.service.connections[index]
@@ -1020,6 +1100,7 @@ class MainWindow(FramelessWindow):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.finished.connect(self._on_test_finished)
+        worker.finished.connect(self._on_test_thread_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
@@ -1033,6 +1114,15 @@ class MainWindow(FramelessWindow):
         else:
             InfoBar.error("连接失败", f"{conn_name}: {msg}",
                           parent=self, position=InfoBarPosition.TOP_RIGHT)
+
+    def _on_test_thread_finished(self, ok: bool, msg: str, conn_name: str):
+        # Update connection test status and refresh UI
+        for i, conn in enumerate(self.service.connections):
+            if (conn.name or conn.host) == conn_name:
+                self.service.config.connections[i].last_test_ok = ok
+                self.service.config.save()
+                self._refresh_conn_list()
+                break
         self.progress.setMaximum(1)
         self.progress.setValue(1)
         self.progress_frame.hide()
@@ -1057,6 +1147,11 @@ class MainWindow(FramelessWindow):
             InfoBar.warning("提示", "请输入 SQL 语句",
                             parent=self, position=InfoBarPosition.TOP_RIGHT)
             return
+        statements = self.service.split_sql(sql)
+        if not statements:
+            InfoBar.warning("提示", "没有可执行 SQL",
+                            parent=self, position=InfoBarPosition.TOP_RIGHT)
+            return
         enabled = self.service.enabled_connections()
         if not enabled:
             InfoBar.warning("提示", "没有可用的数据库连接",
@@ -1068,58 +1163,101 @@ class MainWindow(FramelessWindow):
             return
 
         targets = self.service.resolve_targets(enabled, dlg.selected)
-        if not self._confirm_dangerous_sql(sql, len(targets)):
+        if not self._confirm_dangerous_sql(sql, len(targets), len(statements)):
             return
-        total = len(targets)
+        total = len(targets) * len(statements)
+        continue_on_error = self.continue_on_error_check.isChecked()
 
         self.exec_btn.setEnabled(False)
         self.exec_btn.setText("执行中…")
         self.progress.setValue(0)
         self.progress.setMaximum(total)
         self.progress_frame.show()
+        self.cancel_btn.show()
         self.results = []
 
         thread = QThread(self)
-        worker = SqlExecutionWorker(self.service.database, targets, sql)
+        worker = SqlExecutionWorker(self.service.database, targets, sql, continue_on_error)
         worker.moveToThread(thread)
+        self._current_worker = worker
         thread.started.connect(worker.run)
         worker.status_changed.connect(self._on_execute_status_changed)
         worker.progress_changed.connect(self._on_execute_progress_changed)
         worker.finished.connect(lambda results, executed_sql=sql: self._on_execute_finished(results, executed_sql))
+        worker.cancelled.connect(self._on_execute_cancelled)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, '_current_worker', None))
         self._track_thread(thread)
         thread.start()
 
-    def _confirm_dangerous_sql(self, sql: str, target_count: int) -> bool:
-        operations = self.service.dangerous_operations(sql)
-        if not operations:
+    def _confirm_dangerous_sql(self, sql: str, target_count: int, statement_count: int) -> bool:
+        dangerous = self.service.dangerous_statements(sql)
+        if not dangerous:
             return True
+
+        operations = sorted({operation for _, item_operations in dangerous for operation in item_operations})
+        detail_lines = [
+            f"SQL {statement.index}（第 {statement.start_line} 行）：{', '.join(item_operations)}"
+            for statement, item_operations in dangerous[:5]
+        ]
+        if len(dangerous) > 5:
+            detail_lines.append(f"另有 {len(dangerous) - 5} 条危险语句")
 
         warning = MessageBox(
             "危险 SQL 确认",
             f"检测到危险操作：{', '.join(operations)}\n\n"
-            f"这条 SQL 将发送到 {target_count} 个连接。请确认你已经备份或确认影响范围。",
+            + "\n".join(detail_lines)
+            + "\n\n"
+            f"本次会向 {target_count} 个连接发送 {statement_count} 条 SQL。"
+            "请确认你已经备份或确认影响范围。",
             self,
         )
+        warning.setWindowTitle("⚠️ 危险 SQL 确认")
         warning.yesButton.setText("确认执行")
+        warning.yesButton.setStyleSheet(f"""
+            QPushButton {{
+                background: {theme.DANGER};
+                color: white;
+                border-radius: 7px;
+                font-weight: 600;
+                padding: 6px 20px;
+            }}
+            QPushButton:hover {{ background: #b91c1c; }}
+        """)
         warning.cancelButton.setText("取消")
         return warning.exec_() == Dialog.Accepted
+
+    def _on_cancel_execute(self):
+        if self._current_worker:
+            self._current_worker.cancel()
 
     def _on_execute_status_changed(self, text: str):
         self.status_label.setText(text)
         theme.set_label_color(self.status_label, theme.TEXT_SUBTLE)
 
-    def _on_execute_progress_changed(self, current: int, total: int, result: ExecutionResult):
-        self.results.append(result)
+    def _on_execute_progress_changed(self, current: int, total: int, result):
         self.progress.setMaximum(total)
         self.progress.setValue(current)
+
+    def _on_execute_cancelled(self):
+        self.progress.setMaximum(1)
+        self.progress.setValue(self.progress.maximum())
+        self.cancel_btn.hide()
+        self.exec_btn.setEnabled(True)
+        self.exec_btn.setText("批量执行")
+        self.status_label.setText("已取消")
+        theme.set_label_color(self.status_label, theme.WARNING)
+        InfoBar.warning("已取消", "执行被用户取消", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
     def _on_execute_finished(self, results: list[ExecutionResult], sql: str):
         self.results = results
         self.exec_btn.setEnabled(True)
         self.exec_btn.setText("批量执行")
+        self.cancel_btn.hide()
+        self.progress.setMaximum(1)
+        self.progress.setValue(self.progress.maximum())
         summary = self.service.summarize(self.results)
         try:
             self.service.record_history(sql, self.results)
@@ -1127,15 +1265,24 @@ class MainWindow(FramelessWindow):
         except Exception as error:
             history_note = ""
             InfoBar.warning("历史记录失败", str(error), parent=self, position=InfoBarPosition.TOP_RIGHT)
-        if summary.success == summary.total:
+        cancelled = any(result.cancelled for result in self.results)
+        statement_note = ""
+        if summary.statements_total:
+            statement_note = f"，语句 {summary.statements_success}/{summary.statements_total}"
+        if cancelled:
+            self.status_label.setText(f"已取消: {summary.success}/{summary.total} 成功")
+            theme.set_label_color(self.status_label, theme.WARNING)
+            InfoBar.warning("已取消", f"已保留当前执行结果{history_note}",
+                            parent=self, position=InfoBarPosition.TOP_RIGHT)
+        elif summary.success == summary.total:
             self.status_label.setText(f"完成: {summary.success}/{summary.total} 成功")
             theme.set_label_color(self.status_label, theme.SUCCESS)
-            InfoBar.success("执行完成", f"{summary.success}/{summary.total} 个连接执行成功{history_note}",
+            InfoBar.success("执行完成", f"{summary.success}/{summary.total} 个连接执行成功{statement_note}{history_note}",
                             parent=self, position=InfoBarPosition.TOP_RIGHT)
         else:
             self.status_label.setText(f"完成: {summary.success}/{summary.total} 成功")
             theme.set_label_color(self.status_label, theme.DANGER)
-            InfoBar.error("执行完成", f"{summary.failed} 个连接执行失败",
+            InfoBar.error("执行完成", f"{summary.failed} 个连接执行失败{statement_note}",
                           parent=self, position=InfoBarPosition.TOP_RIGHT)
         self._show_results()
 
@@ -1149,6 +1296,8 @@ class MainWindow(FramelessWindow):
 
         self._tab_buttons.clear()
         self._current_tab = 0
+        self._page_cache = {}
+        self._content_stack = None
 
         if not self.results:
             self.result_stack.setCurrentIndex(0)
@@ -1175,6 +1324,13 @@ class MainWindow(FramelessWindow):
             failed_label = CaptionLabel(f"失败 {summary.failed}")
             theme.set_label_color(failed_label, theme.DANGER)
             summary_lay.addWidget(failed_label)
+        if summary.statements_total:
+            statement_label = CaptionLabel(f"语句 {summary.statements_success}/{summary.statements_total}")
+            theme.set_label_color(
+                statement_label,
+                theme.SUCCESS if summary.statements_success == summary.statements_total else theme.WARNING,
+            )
+            summary_lay.addWidget(statement_label)
         summary_lay.addStretch()
         elapsed_label = CaptionLabel(f"累计耗时 {summary.elapsed_ms:.0f}ms")
         theme.set_label_color(elapsed_label, theme.TEXT_MUTED)
@@ -1188,7 +1344,7 @@ class MainWindow(FramelessWindow):
         tab_lay.setSpacing(0)
 
         for i, r in enumerate(self.results):
-            icon = "✓" if r.success else "✗"
+            icon = "…" if r.cancelled else ("✓" if r.success else "✗")
             btn = PushButton(f"  {icon} {r.connection_name}")
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedHeight(36)
@@ -1201,10 +1357,17 @@ class MainWindow(FramelessWindow):
         self._results_lay.addWidget(tab_bar)
 
         self._content_stack = QStackedWidget()
-        for r in self.results:
-            page = self._build_result_page(r)
-            self._content_stack.addWidget(page)
+        self._content_stack.setStyleSheet("background: transparent; border: none;")
+        # Add placeholder at index 0
+        placeholder = QWidget()
+        placeholder.setStyleSheet("background: transparent;")
+        self._content_stack.addWidget(placeholder)
+        self._page_cache = {}
         self._results_lay.addWidget(self._content_stack, 1)
+
+        # Select first tab to load its content lazily
+        if self.results:
+            self._select_tab(0)
 
     def _tab_style(self, active: bool):
         if active:
@@ -1228,14 +1391,218 @@ class MainWindow(FramelessWindow):
         """
 
     def _select_tab(self, index: int):
-        if index == self._current_tab:
-            return
-        self._tab_buttons[self._current_tab].setStyleSheet(self._tab_style(False))
-        self._tab_buttons[index].setStyleSheet(self._tab_style(True))
-        self._content_stack.setCurrentIndex(index)
+        # Build page content if not cached (regardless of current tab)
+        if index not in self._page_cache:
+            r = self.results[index]
+            page = self._build_result_page(r)
+            self._content_stack.addWidget(page)
+            self._page_cache[index] = page
+
+        # Update tab styles only if tab actually changed
+        if index != self._current_tab and self._tab_buttons:
+            self._tab_buttons[self._current_tab].setStyleSheet(self._tab_style(False))
+            self._tab_buttons[index].setStyleSheet(self._tab_style(True))
+
+        self._content_stack.setCurrentIndex(index + 1)  # +1 because placeholder is at 0
         self._current_tab = index
 
+    def _copy_table_selection(self, table: 'TableWidget'):
+        """Copy selected table rows to clipboard as tab-separated text."""
+        selected = table.selectionModel().selectedRows()
+        if not selected:
+            return
+        rows = sorted(set(r.row() for r in selected))
+        cols = range(table.columnCount())
+        lines = []
+        for row in rows:
+            line = "\t".join(
+                table.item(row, c).text() if table.item(row, c) else ""
+                for c in cols
+            )
+            lines.append(line)
+        clipboard = QApplication.clipboard()
+        clipboard.setText("\n".join(lines))
+
+    def _show_table_context_menu(self, table: 'TableWidget'):
+        menu = QMenu(table)
+        menu.setStyleSheet(f"""
+            QMenu {{ background: {theme.SURFACE}; color: {theme.TEXT_PRIMARY};
+                     border: 1px solid {theme.BORDER}; border-radius: 8px; padding: 4px; font-size: 12px; }}
+            QMenu::item {{ padding: 7px 24px; border-radius: 4px; }}
+            QMenu::item:selected {{ background: {theme.PRIMARY_SOFT}; color: {theme.PRIMARY}; }}
+        """)
+        menu.addAction("复制选中行", lambda: self._copy_table_selection(table))
+        menu.exec_(QCursor.pos())
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress and event.matches(QKeyEvent.Copy):
+            if isinstance(obj, TableWidget):
+                self._copy_table_selection(obj)
+                return True
+        return super().eventFilter(obj, event)
+
+    def _compact_sql(self, sql: str, limit: int = 320) -> str:
+        compact = " ".join(sql.split())
+        if len(compact) <= limit:
+            return compact
+        return compact[: limit - 1] + "…"
+
+    def _create_result_table(self, columns: list[str], data: list[tuple], limit: int = 2000) -> TableWidget:
+        table = TableWidget()
+        table.setAlternatingRowColors(True)
+        table.setWordWrap(False)
+        table.setRowCount(min(len(data), limit))
+        table.setColumnCount(len(columns))
+        table.setHorizontalHeaderLabels(columns)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.verticalHeader().hide()
+        table.horizontalHeader().setStretchLastSection(True)
+        table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft)
+        table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {theme.SURFACE};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                gridline-color: {theme.BORDER};
+                selection-background-color: {theme.SELECTED_BG};
+                selection-color: {theme.TEXT_PRIMARY};
+            }}
+            QHeaderView::section {{
+                background: {theme.SURFACE_SUBTLE};
+                color: {theme.TEXT_MUTED};
+                border: none;
+                border-bottom: 1px solid {theme.BORDER};
+                padding: 8px;
+                font-weight: 600;
+            }}
+        """)
+
+        data_batch = data[:limit]
+        batch_size = 200
+        for batch_start in range(0, len(data_batch), batch_size):
+            batch_end = min(batch_start + batch_size, len(data_batch))
+            for row_idx in range(batch_start, batch_end):
+                row_data = data_batch[row_idx]
+                for col_idx, val in enumerate(row_data):
+                    if val is None:
+                        text = "NULL"
+                    elif isinstance(val, bytes):
+                        text = val.decode("utf-8", errors="replace")
+                    else:
+                        text = str(val)
+                    item = QTableWidgetItem(text)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(row_idx, col_idx, item)
+            QApplication.processEvents()
+
+        table.resizeColumnsToContents()
+        table.installEventFilter(self)
+        table.setContextMenuPolicy(Qt.CustomContextMenu)
+        table.customContextMenuRequested.connect(lambda pos: self._show_table_context_menu(table))
+        return table
+
+    def _build_script_result_page(self, r: ExecutionResult):
+        page = QWidget()
+        page.setStyleSheet("background: transparent;")
+        page_lay = QVBoxLayout(page)
+        page_lay.setContentsMargins(20, 16, 20, 20)
+        page_lay.setSpacing(0)
+
+        scroll = ScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        content_lay = QVBoxLayout(content)
+        content_lay.setContentsMargins(0, 0, 8, 0)
+        content_lay.setSpacing(10)
+
+        header = QHBoxLayout()
+        title = SubtitleLabel(r.connection_name)
+        header.addWidget(title)
+        summary = CaptionLabel(f"{r.message} · {r.duration_ms:.0f}ms")
+        summary.setWordWrap(True)
+        theme.set_label_color(summary, theme.SUCCESS if r.success else theme.DANGER)
+        header.addWidget(summary, 1, Qt.AlignRight)
+        content_lay.addLayout(header)
+
+        for statement in r.statement_results:
+            content_lay.addWidget(self._build_statement_card(statement))
+
+        skipped = r.statements_total - len(r.statement_results)
+        if skipped > 0:
+            skipped_label = CaptionLabel(f"后续 {skipped} 条 SQL 未执行")
+            skipped_label.setAlignment(Qt.AlignCenter)
+            theme.set_label_color(skipped_label, theme.WARNING)
+            content_lay.addWidget(skipped_label)
+
+        content_lay.addStretch()
+        scroll.setWidget(content)
+        page_lay.addWidget(scroll, 1)
+        return page
+
+    def _build_statement_card(self, statement: StatementExecutionResult):
+        card = SimpleCardWidget()
+        card.setObjectName("statementResultCard")
+        card.setStyleSheet(f"""
+            #statementResultCard {{
+                background: {theme.SURFACE};
+                border: 1px solid {theme.BORDER};
+                border-radius: 10px;
+            }}
+        """)
+        card_lay = QVBoxLayout(card)
+        card_lay.setContentsMargins(14, 12, 14, 14)
+        card_lay.setSpacing(8)
+
+        header = QHBoxLayout()
+        title = SubtitleLabel(f"SQL {statement.index} · 第 {statement.start_line} 行")
+        header.addWidget(title)
+        header.addStretch()
+        status = CaptionLabel("成功" if statement.success else "失败")
+        theme.set_label_color(status, theme.SUCCESS if statement.success else theme.DANGER)
+        header.addWidget(status)
+        duration = CaptionLabel(f"{statement.duration_ms:.0f}ms")
+        theme.set_label_color(duration, theme.TEXT_MUTED)
+        header.addWidget(duration)
+        card_lay.addLayout(header)
+
+        preview = CaptionLabel(self._compact_sql(statement.sql))
+        preview.setWordWrap(True)
+        preview.setStyleSheet(f"""
+            QLabel {{
+                color: {theme.TEXT_MUTED};
+                background: {theme.EDITOR_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                padding: 8px;
+                font-family: {theme.EDITOR_FONT};
+            }}
+        """)
+        card_lay.addWidget(preview)
+
+        message = BodyLabel(statement.message)
+        message.setWordWrap(True)
+        theme.set_label_color(message, theme.SUCCESS if statement.success else theme.DANGER)
+        card_lay.addWidget(message)
+
+        if statement.columns:
+            table = self._create_result_table(statement.columns, statement.data, limit=500)
+            table.setMinimumHeight(150)
+            table.setMaximumHeight(320)
+            card_lay.addWidget(table)
+            if len(statement.data) > 500:
+                limit_label = CaptionLabel("仅显示前 500 行")
+                theme.set_label_color(limit_label, theme.WARNING)
+                card_lay.addWidget(limit_label)
+
+        return card
+
     def _build_result_page(self, r: ExecutionResult):
+        if r.statements_total > 1 or len(r.statement_results) > 1:
+            return self._build_script_result_page(r)
+
         page = QWidget()
         page.setStyleSheet("background: transparent;")
         lay = QVBoxLayout(page)
@@ -1275,49 +1642,7 @@ class MainWindow(FramelessWindow):
                 header.addWidget(limit_label)
             container_lay.addLayout(header)
 
-            table = TableWidget()
-            table.setAlternatingRowColors(True)
-            table.setWordWrap(False)
-            table.setRowCount(min(len(r.data), 2000))
-            table.setColumnCount(len(r.columns))
-            table.setHorizontalHeaderLabels(r.columns)
-            table.setSelectionBehavior(QAbstractItemView.SelectRows)
-            table.setSelectionMode(QAbstractItemView.SingleSelection)
-            table.verticalHeader().hide()
-            table.horizontalHeader().setStretchLastSection(True)
-            table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft)
-            table.setStyleSheet(f"""
-                QTableWidget {{
-                    background: {theme.SURFACE};
-                    border: 1px solid {theme.BORDER};
-                    border-radius: 6px;
-                    gridline-color: {theme.BORDER};
-                    selection-background-color: #dbeafe;
-                    selection-color: {theme.TEXT_PRIMARY};
-                }}
-                QHeaderView::section {{
-                    background: {theme.SURFACE_SUBTLE};
-                    color: {theme.TEXT_MUTED};
-                    border: none;
-                    border-bottom: 1px solid {theme.BORDER};
-                    padding: 8px;
-                    font-weight: 600;
-                }}
-            """)
-
-            for row_idx, row_data in enumerate(r.data[:2000]):
-                for col_idx, val in enumerate(row_data):
-                    if val is None:
-                        text = "NULL"
-                    elif isinstance(val, bytes):
-                        text = val.decode("utf-8", errors="replace")
-                    else:
-                        text = str(val)
-                    item = QTableWidgetItem(text)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(row_idx, col_idx, item)
-
-            table.resizeColumnsToContents()
+            table = self._create_result_table(r.columns, r.data, limit=2000)
             container_lay.addWidget(table, 1)
             if not r.data:
                 empty_note = CaptionLabel("查询成功，但没有返回数据行。")
@@ -1327,7 +1652,6 @@ class MainWindow(FramelessWindow):
             lay.addWidget(container, 1)
         else:
             color = theme.SUCCESS if r.success else theme.DANGER
-            bg = theme.SUCCESS_SOFT if r.success else theme.DANGER_SOFT
             wrapper = SimpleCardWidget()
             wrapper.setObjectName("resultStatusCard")
             wrapper.setStyleSheet(f"""
@@ -1384,5 +1708,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

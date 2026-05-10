@@ -3,6 +3,7 @@ from typing import Sequence
 
 from sql_batch_executor.core.config_manager import ConfigManager, ConnectionConfig
 from sql_batch_executor.core.history_manager import ExecutionHistoryManager, HistoryEntry
+from sql_batch_executor.core.sql_script import SqlStatement, split_sql_script
 from sql_batch_executor.core.sql_safety import SqlSafetyChecker
 from sql_batch_executor.database.manager import DatabaseClient, ExecutionResult, MySqlClient
 
@@ -12,10 +13,16 @@ class ExecutionSummary:
     total: int
     success: int
     elapsed_ms: float
+    statements_total: int = 0
+    statements_success: int = 0
 
     @property
     def failed(self) -> int:
         return self.total - self.success
+
+    @property
+    def statements_failed(self) -> int:
+        return self.statements_total - self.statements_success
 
 
 class ConnectionService:
@@ -73,21 +80,46 @@ class ConnectionService:
         self,
         targets: Sequence[ConnectionConfig],
         sql: str,
+        continue_on_error: bool = False,
     ) -> list[ExecutionResult]:
-        return [self.database.execute(conn, sql) for conn in targets]
+        return [
+            self.database.execute(conn, sql, continue_on_error=continue_on_error)
+            for conn in targets
+        ]
 
-    def execute_one(self, conn: ConnectionConfig, sql: str) -> ExecutionResult:
-        return self.database.execute(conn, sql)
+    def execute_one(
+        self,
+        conn: ConnectionConfig,
+        sql: str,
+        continue_on_error: bool = False,
+    ) -> ExecutionResult:
+        return self.database.execute(conn, sql, continue_on_error=continue_on_error)
 
     def summarize(self, results: Sequence[ExecutionResult]) -> ExecutionSummary:
+        statement_results = [
+            statement
+            for result in results
+            for statement in result.statement_results
+        ]
         return ExecutionSummary(
             total=len(results),
             success=sum(1 for result in results if result.success),
             elapsed_ms=sum(result.duration_ms for result in results),
+            statements_total=sum(
+                result.statements_total or len(result.statement_results)
+                for result in results
+            ),
+            statements_success=sum(1 for statement in statement_results if statement.success),
         )
 
     def dangerous_operations(self, sql: str) -> list[str]:
         return self.safety.find_dangerous_operations(sql)
+
+    def dangerous_statements(self, sql: str) -> list[tuple[SqlStatement, list[str]]]:
+        return self.safety.find_dangerous_statements(sql)
+
+    def split_sql(self, sql: str) -> list[SqlStatement]:
+        return split_sql_script(sql)
 
     def record_history(self, sql: str, results: Sequence[ExecutionResult]) -> HistoryEntry:
         return self.history.append(sql, results)

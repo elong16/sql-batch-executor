@@ -22,7 +22,7 @@ echo [3/3] Building exe...
 if errorlevel 1 goto failed
 
 echo.
-echo Build finished. Output: dist\SQLBatchExecutor.exe
+echo Build finished. Check the dist folder for the generated EXE.
 pause
 exit /b 0
 

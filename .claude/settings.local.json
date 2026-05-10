@@ -4,7 +4,9 @@
       "Bash(cd /d D:/pythonProject/sql-batch-executor)",
       "Bash(python scripts/build_exe.py)",
       "Bash(D:/pythonProject/sql-batch-executor/.venv/Scripts/python.exe *)",
-      "Bash(chardetect D:/pythonProject/sql-batch-executor/build_exe.bat)"
+      "Bash(chardetect D:/pythonProject/sql-batch-executor/build_exe.bat)",
+      "Bash(sed -i '8s/.*/from PyQt5.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QKeyEvent/' sql_batch_executor/ui/main_window.py)",
+      "Bash(sed -i '5s/.*/    QTableWidgetItem, QAbstractItemView, QMenu, QDialog, QPushButton,\\\\n    QClipboard,/' sql_batch_executor/ui/main_window.py)"
     ]
   }
 }

@@ -1,5 +1,5 @@
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Sequence
@@ -12,12 +12,24 @@ HISTORY_FILE = "execution_history.json"
 
 
 @dataclass(frozen=True)
+class HistoryStatementItem:
+    index: int
+    start_line: int
+    success: bool
+    message: str
+    rows_affected: int
+    duration_ms: float
+
+
+@dataclass(frozen=True)
 class HistoryResultItem:
     connection_name: str
     success: bool
     message: str
     rows_affected: int
     duration_ms: float
+    statements_total: int = 0
+    statements: list[HistoryStatementItem] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -39,9 +51,13 @@ class ExecutionHistoryManager:
     def load(self) -> list[dict]:
         if not self.history_path.exists():
             return []
-        with self.history_path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-        return data.get("history", [])
+        try:
+            with self.history_path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return []
+        history = data.get("history", []) if isinstance(data, dict) else []
+        return history if isinstance(history, list) else []
 
     def append(self, sql: str, results: Sequence[ExecutionResult]) -> HistoryEntry:
         total = len(results)
@@ -60,6 +76,18 @@ class ExecutionHistoryManager:
                     message=result.message,
                     rows_affected=result.rows_affected,
                     duration_ms=result.duration_ms,
+                    statements_total=result.statements_total,
+                    statements=[
+                        HistoryStatementItem(
+                            index=statement.index,
+                            start_line=statement.start_line,
+                            success=statement.success,
+                            message=statement.message,
+                            rows_affected=statement.rows_affected,
+                            duration_ms=statement.duration_ms,
+                        )
+                        for statement in result.statement_results
+                    ],
                 )
                 for result in results
             ],

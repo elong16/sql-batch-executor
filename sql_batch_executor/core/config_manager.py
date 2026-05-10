@@ -1,5 +1,5 @@
 import json
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from typing import List
 
@@ -17,6 +17,7 @@ class ConnectionConfig:
     password: str = ""
     database: str = ""
     enabled: bool = True
+    last_test_ok: bool | None = None  # None = not tested yet
 
 
 class ConfigManager:
@@ -29,9 +30,30 @@ class ConfigManager:
         if not self.config_path.exists():
             self.connections = []
             return
-        with self.config_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.connections = [ConnectionConfig(**item) for item in data.get("connections", [])]
+        try:
+            with self.config_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            self.connections = []
+            return
+
+        raw_connections = data.get("connections", []) if isinstance(data, dict) else []
+        if not isinstance(raw_connections, list):
+            self.connections = []
+            return
+
+        allowed_fields = {item.name for item in fields(ConnectionConfig)}
+        connections: list[ConnectionConfig] = []
+        for item in raw_connections:
+            if not isinstance(item, dict):
+                continue
+            values = {key: item[key] for key in allowed_fields if key in item}
+            try:
+                values["port"] = int(values.get("port", 3306) or 3306)
+                connections.append(ConnectionConfig(**values))
+            except (TypeError, ValueError):
+                continue
+        self.connections = connections
 
     def save(self):
         data = {"connections": [asdict(c) for c in self.connections]}
