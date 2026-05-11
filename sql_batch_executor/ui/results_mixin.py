@@ -1,5 +1,5 @@
 from PyQt5.QtCore import QEvent, Qt
-from PyQt5.QtGui import QCursor, QKeyEvent
+from PyQt5.QtGui import QCursor, QKeySequence
 from PyQt5.QtWidgets import QApplication, QAbstractItemView, QFrame, QHBoxLayout, QLabel, QMenu, QStackedWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from qfluentwidgets import BodyLabel, CaptionLabel, PushButton, ScrollArea, SimpleCardWidget, SubtitleLabel, TableWidget
@@ -162,17 +162,76 @@ class ResultsMixin:
         self._content_stack.setCurrentIndex(index + 1)
         self._current_tab = index
 
-    def _copy_table_selection(self, table: TableWidget):
-        selected = table.selectionModel().selectedRows()
-        if not selected:
-            return
-        rows = sorted(set(row.row() for row in selected))
-        cols = range(table.columnCount())
+    def _copy_to_clipboard(self, text: str):
+        QApplication.clipboard().setText(text)
+
+    def _make_copyable_label(self, label: QLabel):
+        label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+        label.setCursor(Qt.IBeamCursor)
+        label.setContextMenuPolicy(Qt.CustomContextMenu)
+        label.customContextMenuRequested.connect(lambda pos, item=label: self._show_text_context_menu(item, pos))
+        label.installEventFilter(self)
+        return label
+
+    def _copy_label_text(self, label: QLabel, selected_only: bool = False):
+        selected = label.selectedText()
+        text = selected if selected_only and selected else selected or label.text()
+        text = text.replace("\u2029", "\n")
+        if text:
+            self._copy_to_clipboard(text)
+
+    def _show_text_context_menu(self, label: QLabel, pos):
+        menu = QMenu(label)
+        menu.setStyleSheet(f"""
+            QMenu {{ background: {theme.SURFACE}; color: {theme.TEXT_PRIMARY};
+                     border: 1px solid {theme.BORDER}; border-radius: 8px; padding: 4px; font-size: 12px; }}
+            QMenu::item {{ padding: 7px 24px; border-radius: 4px; }}
+            QMenu::item:selected {{ background: {theme.PRIMARY_SOFT}; color: {theme.PRIMARY}; }}
+            QMenu::item:disabled {{ color: {theme.TEXT_SUBTLE}; }}
+        """)
+        selected = bool(label.selectedText())
+        selected_action = menu.addAction("复制选中文本", lambda: self._copy_label_text(label, selected_only=True))
+        selected_action.setEnabled(selected)
+        all_action = menu.addAction("复制全部文本", lambda: self._copy_label_text(label))
+        all_action.setEnabled(bool(label.text()))
+        menu.exec_(label.mapToGlobal(pos))
+
+    def _table_cell_text(self, table: TableWidget, row: int, col: int) -> str:
+        item = table.item(row, col)
+        return item.text() if item else ""
+
+    def _table_text(self, table: TableWidget, rows, cols, include_headers: bool = False) -> str:
         lines = []
+        cols = list(cols)
+        if include_headers:
+            headers = []
+            for col in cols:
+                header = table.horizontalHeaderItem(col)
+                headers.append(header.text() if header else "")
+            lines.append("\t".join(headers))
         for row in rows:
-            line = "\t".join(table.item(row, col).text() if table.item(row, col) else "" for col in cols)
+            line = "\t".join(self._table_cell_text(table, row, col) for col in cols)
             lines.append(line)
-        QApplication.clipboard().setText("\n".join(lines))
+        return "\n".join(lines)
+
+    def _copy_table_selection(self, table: TableWidget):
+        indexes = table.selectedIndexes()
+        if not indexes:
+            self._copy_table_current_cell(table)
+            return
+        rows = sorted({index.row() for index in indexes})
+        cols = sorted({index.column() for index in indexes})
+        self._copy_to_clipboard(self._table_text(table, rows, cols))
+
+    def _copy_table_current_cell(self, table: TableWidget):
+        item = table.currentItem()
+        if item:
+            self._copy_to_clipboard(item.text())
+
+    def _copy_table_all(self, table: TableWidget, include_headers: bool = True):
+        rows = range(table.rowCount())
+        cols = range(table.columnCount())
+        self._copy_to_clipboard(self._table_text(table, rows, cols, include_headers=include_headers))
 
     def _show_table_context_menu(self, table: TableWidget):
         menu = QMenu(table)
@@ -181,14 +240,24 @@ class ResultsMixin:
                      border: 1px solid {theme.BORDER}; border-radius: 8px; padding: 4px; font-size: 12px; }}
             QMenu::item {{ padding: 7px 24px; border-radius: 4px; }}
             QMenu::item:selected {{ background: {theme.PRIMARY_SOFT}; color: {theme.PRIMARY}; }}
+            QMenu::item:disabled {{ color: {theme.TEXT_SUBTLE}; }}
         """)
-        menu.addAction("复制选中行", lambda: self._copy_table_selection(table))
+        selection_action = menu.addAction("复制选中内容", lambda: self._copy_table_selection(table))
+        selection_action.setEnabled(bool(table.selectedIndexes()))
+        cell_action = menu.addAction("复制当前单元格", lambda: self._copy_table_current_cell(table))
+        cell_action.setEnabled(table.currentItem() is not None)
+        menu.addSeparator()
+        menu.addAction("复制全部结果", lambda: self._copy_table_all(table, include_headers=False))
+        menu.addAction("复制全部结果（含表头）", lambda: self._copy_table_all(table, include_headers=True))
         menu.exec_(QCursor.pos())
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress and event.matches(QKeyEvent.Copy):
+        if event.type() == QEvent.KeyPress and event.matches(QKeySequence.Copy):
             if isinstance(obj, TableWidget):
                 self._copy_table_selection(obj)
+                return True
+            if isinstance(obj, QLabel):
+                self._copy_label_text(obj)
                 return True
         return super().eventFilter(obj, event)
 
@@ -206,7 +275,7 @@ class ResultsMixin:
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        table.setSelectionMode(QAbstractItemView.SingleSelection)
+        table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         table.verticalHeader().hide()
         table.horizontalHeader().setStretchLastSection(True)
         table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft)
@@ -270,9 +339,9 @@ class ResultsMixin:
         content_lay.setSpacing(10)
 
         header = QHBoxLayout()
-        title = SubtitleLabel(result.connection_name)
+        title = self._make_copyable_label(SubtitleLabel(result.connection_name))
         header.addWidget(title)
-        summary = CaptionLabel(f"{result.message} · {result.duration_ms:.0f}ms")
+        summary = self._make_copyable_label(CaptionLabel(f"{result.message} · {result.duration_ms:.0f}ms"))
         summary.setWordWrap(True)
         theme.set_label_color(summary, theme.SUCCESS if result.success else theme.DANGER)
         header.addWidget(summary, 1, Qt.AlignRight)
@@ -283,7 +352,7 @@ class ResultsMixin:
 
         skipped = result.statements_total - len(result.statement_results)
         if skipped > 0:
-            skipped_label = CaptionLabel(f"后续 {skipped} 条 SQL 未执行")
+            skipped_label = self._make_copyable_label(CaptionLabel(f"后续 {skipped} 条 SQL 未执行"))
             skipped_label.setAlignment(Qt.AlignCenter)
             theme.set_label_color(skipped_label, theme.WARNING)
             content_lay.addWidget(skipped_label)
@@ -308,18 +377,18 @@ class ResultsMixin:
         card_lay.setSpacing(8)
 
         header = QHBoxLayout()
-        title = SubtitleLabel(f"SQL {statement.index} · 第 {statement.start_line} 行")
+        title = self._make_copyable_label(SubtitleLabel(f"SQL {statement.index} · 第 {statement.start_line} 行"))
         header.addWidget(title)
         header.addStretch()
-        status = CaptionLabel("成功" if statement.success else "失败")
+        status = self._make_copyable_label(CaptionLabel("成功" if statement.success else "失败"))
         theme.set_label_color(status, theme.SUCCESS if statement.success else theme.DANGER)
         header.addWidget(status)
-        duration = CaptionLabel(f"{statement.duration_ms:.0f}ms")
+        duration = self._make_copyable_label(CaptionLabel(f"{statement.duration_ms:.0f}ms"))
         theme.set_label_color(duration, theme.TEXT_MUTED)
         header.addWidget(duration)
         card_lay.addLayout(header)
 
-        preview = CaptionLabel(self._compact_sql(statement.sql))
+        preview = self._make_copyable_label(CaptionLabel(self._compact_sql(statement.sql)))
         preview.setWordWrap(True)
         preview.setStyleSheet(f"""
             QLabel {{
@@ -333,7 +402,7 @@ class ResultsMixin:
         """)
         card_lay.addWidget(preview)
 
-        message = BodyLabel(statement.message)
+        message = self._make_copyable_label(BodyLabel(statement.message))
         message.setWordWrap(True)
         theme.set_label_color(message, theme.SUCCESS if statement.success else theme.DANGER)
         card_lay.addWidget(message)
@@ -344,7 +413,7 @@ class ResultsMixin:
             table.setMaximumHeight(320)
             card_lay.addWidget(table)
             if len(statement.data) > 500:
-                limit_label = CaptionLabel("仅显示前 500 行")
+                limit_label = self._make_copyable_label(CaptionLabel("仅显示前 500 行"))
                 theme.set_label_color(limit_label, theme.WARNING)
                 card_lay.addWidget(limit_label)
 
@@ -377,18 +446,18 @@ class ResultsMixin:
             header = QHBoxLayout()
             title_col = QVBoxLayout()
             title_col.setSpacing(2)
-            name = SubtitleLabel(result.connection_name)
+            name = self._make_copyable_label(SubtitleLabel(result.connection_name))
             title_col.addWidget(name)
-            info_label = CaptionLabel(f"{result.message} · {result.duration_ms:.0f}ms")
+            info_label = self._make_copyable_label(CaptionLabel(f"{result.message} · {result.duration_ms:.0f}ms"))
             theme.set_label_color(info_label, theme.SUCCESS)
             title_col.addWidget(info_label)
             header.addLayout(title_col)
             header.addStretch()
-            rows_label = CaptionLabel(f"{len(result.data)} 行")
+            rows_label = self._make_copyable_label(CaptionLabel(f"{len(result.data)} 行"))
             theme.set_label_color(rows_label, theme.TEXT_MUTED)
             header.addWidget(rows_label)
             if len(result.data) > 2000:
-                limit_label = CaptionLabel("仅显示前 2000 行")
+                limit_label = self._make_copyable_label(CaptionLabel("仅显示前 2000 行"))
                 theme.set_label_color(limit_label, theme.WARNING)
                 header.addWidget(limit_label)
             container_lay.addLayout(header)
@@ -396,7 +465,7 @@ class ResultsMixin:
             table = self._create_result_table(result.columns, result.data, limit=2000)
             container_lay.addWidget(table, 1)
             if not result.data:
-                empty_note = CaptionLabel("查询成功，但没有返回数据行。")
+                empty_note = self._make_copyable_label(CaptionLabel("查询成功，但没有返回数据行。"))
                 empty_note.setAlignment(Qt.AlignCenter)
                 theme.set_label_color(empty_note, theme.TEXT_MUTED)
                 container_lay.addWidget(empty_note)
@@ -427,17 +496,17 @@ class ResultsMixin:
             icon.setAlignment(Qt.AlignCenter)
             wrapper_lay.addWidget(icon)
 
-            name = SubtitleLabel(result.connection_name)
+            name = self._make_copyable_label(SubtitleLabel(result.connection_name))
             name.setAlignment(Qt.AlignCenter)
             wrapper_lay.addWidget(name)
 
-            message = BodyLabel(result.message)
+            message = self._make_copyable_label(BodyLabel(result.message))
             theme.set_label_color(message, color)
             message.setAlignment(Qt.AlignCenter)
             message.setWordWrap(True)
             wrapper_lay.addWidget(message)
 
-            duration = CaptionLabel(f"耗时: {result.duration_ms:.0f}ms")
+            duration = self._make_copyable_label(CaptionLabel(f"耗时: {result.duration_ms:.0f}ms"))
             theme.set_label_color(duration, theme.TEXT_MUTED)
             duration.setAlignment(Qt.AlignCenter)
             wrapper_lay.addWidget(duration)
