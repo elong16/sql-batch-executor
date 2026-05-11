@@ -1,3 +1,15 @@
 {
-  "connections": []
+  "connections": [
+    {
+      "name": "local-dev",
+      "group": "测试环境",
+      "host": "localhost",
+      "port": 3306,
+      "user": "root",
+      "password": "",
+      "database": "",
+      "enabled": true,
+      "last_test_ok": null
+    }
+  ]
 }

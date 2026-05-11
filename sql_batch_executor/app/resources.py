@@ -24,3 +24,4 @@ def data_path(filename: str) -> Path:
 
 BASE_DIR = app_dir()
 APP_ICON_PATH = resource_path("assets", "app_icon.svg")
+APP_ICON_ICO_PATH = resource_path("assets", "app_icon.ico")

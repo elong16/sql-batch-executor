@@ -22,6 +22,8 @@ class TestConnectionWorker(QObject):
 class SqlExecutionWorker(QObject):
     status_changed = pyqtSignal(str)
     progress_changed = pyqtSignal(int, int, object)
+    statement_finished = pyqtSignal(int, object)
+    connection_finished = pyqtSignal(int, object)
     finished = pyqtSignal(object)
     cancelled = pyqtSignal()
 
@@ -56,10 +58,11 @@ class SqlExecutionWorker(QObject):
         total = len(self.targets) * statement_count
         completed = 0
 
-        for conn_index, conn in enumerate(self.targets, start=1):
+        for target_index, conn in enumerate(self.targets):
             if self.is_cancelled():
                 self.cancelled.emit()
                 return
+            conn_index = target_index + 1
             conn_name = conn.name or conn.host
             conn_completed_before = completed
             self.status_changed.emit(f"执行中 {conn_index}/{len(self.targets)}: {conn_name}")
@@ -72,6 +75,7 @@ class SqlExecutionWorker(QObject):
                     f"SQL {statement_result.index}/{statement_count}: {conn_name}"
                 )
                 self.progress_changed.emit(completed, total, statement_result)
+                self.statement_finished.emit(target_index, statement_result)
 
             result = self.database_client.execute(
                 conn,
@@ -81,6 +85,7 @@ class SqlExecutionWorker(QObject):
                 cancel_callback=self.is_cancelled,
             )
             results.append(result)
+            self.connection_finished.emit(target_index, result)
             if completed - conn_completed_before < statement_count:
                 completed = conn_completed_before + statement_count
                 self.progress_changed.emit(completed, total, result)

@@ -1,19 +1,42 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
-    <linearGradient id="bg" x1="48" y1="24" x2="208" y2="232" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3B82F6"/>
-      <stop offset="1" stop-color="#1D4ED8"/>
+    <linearGradient id="bg" x1="42" y1="26" x2="214" y2="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.58" stop-color="#0F766E"/>
+      <stop offset="1" stop-color="#22D3EE"/>
     </linearGradient>
-    <linearGradient id="shine" x1="70" y1="40" x2="170" y2="150" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.36"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(132 113) rotate(90) scale(111 118)">
+      <stop offset="0" stop-color="#A7F3D0" stop-opacity="0.72"/>
+      <stop offset="0.58" stop-color="#2DD4BF" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="db" x1="76" y1="58" x2="174" y2="187" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#CCFBF1"/>
     </linearGradient>
+    <linearGradient id="arrow" x1="132" y1="133" x2="190" y2="191" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E0F2FE"/>
+      <stop offset="1" stop-color="#67E8F9"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#020617" flood-opacity="0.38"/>
+    </filter>
   </defs>
-  <rect x="24" y="24" width="208" height="208" rx="52" fill="url(#bg)"/>
-  <rect x="24" y="24" width="208" height="208" rx="52" fill="url(#shine)"/>
-  <path d="M76 84C76 70.745 99.281 60 128 60C156.719 60 180 70.745 180 84V172C180 185.255 156.719 196 128 196C99.281 196 76 185.255 76 172V84Z" fill="#EAF2FF"/>
-  <path d="M180 84C180 97.255 156.719 108 128 108C99.281 108 76 97.255 76 84C76 70.745 99.281 60 128 60C156.719 60 180 70.745 180 84Z" fill="#FFFFFF"/>
-  <path d="M180 113C180 126.255 156.719 137 128 137C99.281 137 76 126.255 76 113" fill="none" stroke="#93C5FD" stroke-width="10" stroke-linecap="round"/>
-  <path d="M180 143C180 156.255 156.719 167 128 167C99.281 167 76 156.255 76 143" fill="none" stroke="#93C5FD" stroke-width="10" stroke-linecap="round"/>
-  <path d="M103 86H153" stroke="#2563EB" stroke-width="10" stroke-linecap="round"/>
+
+  <rect x="18" y="18" width="220" height="220" rx="54" fill="url(#bg)"/>
+  <rect x="18" y="18" width="220" height="220" rx="54" fill="url(#glow)"/>
+  <path d="M61 42H195C205.5 42 214 50.5 214 61V195C214 205.5 205.5 214 195 214H61C50.5 214 42 205.5 42 195V61C42 50.5 50.5 42 61 42Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"/>
+
+  <g filter="url(#softShadow)">
+    <path d="M67 83C67 67.5 94.3 55 128 55C161.7 55 189 67.5 189 83V164C189 179.5 161.7 192 128 192C94.3 192 67 179.5 67 164V83Z" fill="url(#db)"/>
+    <ellipse cx="128" cy="83" rx="61" ry="28" fill="#FFFFFF"/>
+    <ellipse cx="128" cy="83" rx="43" ry="16" fill="#E0F2FE"/>
+    <path d="M189 112C189 127.5 161.7 140 128 140C94.3 140 67 127.5 67 112" fill="none" stroke="#5EEAD4" stroke-width="9" stroke-linecap="round"/>
+    <path d="M189 143C189 158.5 161.7 171 128 171C94.3 171 67 158.5 67 143" fill="none" stroke="#14B8A6" stroke-width="9" stroke-linecap="round"/>
+  </g>
+
+  <path d="M129 157H177" stroke="#0F172A" stroke-width="28" stroke-linecap="round" opacity="0.22"/>
+  <path d="M131 154H172" stroke="url(#arrow)" stroke-width="18" stroke-linecap="round"/>
+  <path d="M160 132L190 154L160 176" fill="none" stroke="url(#arrow)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="83" cy="67" r="7" fill="#99F6E4" opacity="0.95"/>
 </svg>

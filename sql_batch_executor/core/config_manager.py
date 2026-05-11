@@ -11,6 +11,7 @@ CONFIG_FILE = "connections.json"
 @dataclass
 class ConnectionConfig:
     name: str = ""
+    group: str = "默认分组"
     host: str = "localhost"
     port: int = 3306
     user: str = "root"
@@ -50,6 +51,7 @@ class ConfigManager:
             values = {key: item[key] for key in allowed_fields if key in item}
             try:
                 values["port"] = int(values.get("port", 3306) or 3306)
+                values["group"] = str(values.get("group") or "默认分组").strip() or "默认分组"
                 connections.append(ConnectionConfig(**values))
             except (TypeError, ValueError):
                 continue
