@@ -1,8 +1,21 @@
 {
+  "groups": [
+    {
+      "id": "grp_test",
+      "name": "测试环境",
+      "collapsed": false
+    },
+    {
+      "id": "grp_prod",
+      "name": "正式环境",
+      "collapsed": false
+    }
+  ],
   "connections": [
     {
+      "id": "conn_local_dev",
       "name": "local-dev",
-      "group": "测试环境",
+      "group_id": "grp_test",
       "host": "localhost",
       "port": 3306,
       "user": "root",

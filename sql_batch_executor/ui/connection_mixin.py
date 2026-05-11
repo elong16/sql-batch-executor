@@ -1,59 +1,80 @@
 from PyQt5.QtCore import QThread, Qt
-from PyQt5.QtWidgets import QDialog, QInputDialog, QMenu
+from PyQt5.QtWidgets import QDialog, QHBoxLayout, QMenu, QWidget
 
 from qfluentwidgets import BodyLabel, Dialog, InfoBar, InfoBarPosition, MessageBox
 
 from sql_batch_executor.core.config_manager import ConnectionConfig
 from sql_batch_executor.ui import theme
-from sql_batch_executor.ui.connection_widgets import ConnCard, ConnDialog, GroupHeader
+from sql_batch_executor.ui.connection_widgets import ConnCard, ConnDialog, GroupDialog, GroupHeader
 from sql_batch_executor.ui.workers import TestConnectionWorker
 
 
 class ConnectionMixin:
-    def _add_group_header(self, group_name: str, total: int, enabled: int):
+    def _add_group_header(self, group, total: int, enabled: int, collapsed: bool | None = None):
+        if collapsed is None:
+            collapsed = group.collapsed
         header = GroupHeader(
-            group_name,
+            group.id,
+            group.name,
             total,
             enabled,
             self._rename_group,
+            self._toggle_group_collapsed,
             self._move_connection_to_group,
+            collapsed,
         )
         self.conn_layout.insertWidget(self.conn_layout.count() - 1, header)
 
-    def _group_names(self) -> list[str]:
-        names = {
-            (getattr(conn, "group", "") or "默认分组").strip() or "默认分组"
-            for conn in self.service.connections
-        }
-        return sorted(names)
+    def _groups(self):
+        return sorted(getattr(self.service.config, "groups", []) or [], key=lambda group: group.name)
 
-    def _rename_group(self, old_name: str):
-        new_name, ok = QInputDialog.getText(self, "编辑分组", "分组名称", text=old_name)
-        if not ok:
+    def _toggle_group_collapsed(self, group_id: str):
+        group = self.service.config.group_by_id(group_id)
+        if group is None:
             return
-        new_name = new_name.strip() or "默认分组"
+        self.service.config.set_group_collapsed(group_id, not group.collapsed)
+        self._refresh_conn_list(self.search_edit.text() if hasattr(self, "search_edit") else "")
+
+    def _on_add_group(self):
+        dialog = GroupDialog(self, "新建分组")
+        if dialog.exec_() != QDialog.Accepted or not dialog.result:
+            return
+        group = self.service.config.add_group(dialog.result)
+        if group:
+            self._refresh_conn_list(self.search_edit.text() if hasattr(self, "search_edit") else "")
+            InfoBar.success("成功", f"已创建分组「{dialog.result}」", parent=self, position=InfoBarPosition.TOP_RIGHT)
+        else:
+            InfoBar.warning("提示", f"分组「{dialog.result}」已存在", parent=self, position=InfoBarPosition.TOP_RIGHT)
+
+    def _rename_group(self, group_id: str):
+        group = self.service.config.group_by_id(group_id)
+        if group is None:
+            return
+        old_name = group.name
+        dialog = GroupDialog(self, "编辑分组", old_name)
+        if dialog.exec_() != QDialog.Accepted or not dialog.result:
+            return
+        new_name = dialog.result.strip() or "默认分组"
         if new_name == old_name:
             return
-        for conn in self.service.connections:
-            group_name = (getattr(conn, "group", "") or "默认分组").strip() or "默认分组"
-            if group_name == old_name:
-                conn.group = new_name
-        self.service.config.save()
+        if not self.service.config.rename_group(group_id, new_name):
+            InfoBar.warning("提示", f"分组「{new_name}」已存在", parent=self, position=InfoBarPosition.TOP_RIGHT)
+            return
         self._refresh_conn_list(self.search_edit.text() if hasattr(self, "search_edit") else "")
         InfoBar.success("成功", f"已将分组改为「{new_name}」", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
-    def _move_connection_to_group(self, index: int, group_name: str):
-        if not (0 <= index < len(self.service.connections)):
+    def _move_connection_to_group(self, connection_id: str, group_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        if index is None:
             return
         conn = self.service.connections[index]
-        group_name = group_name.strip() or "默认分组"
-        current = (getattr(conn, "group", "") or "默认分组").strip() or "默认分组"
-        if current == group_name:
+        group = self.service.config.group_by_id(group_id)
+        if group is None or conn.group_id == group_id:
             return
-        conn.group = group_name
+        conn.group_id = group_id
         self.service.config.save()
         self._refresh_conn_list(self.search_edit.text() if hasattr(self, "search_edit") else "")
-        InfoBar.success("已移动", f"{conn.name or conn.host} -> {group_name}", parent=self, position=InfoBarPosition.TOP_RIGHT)
+        InfoBar.success("已移动", f"{conn.name or conn.host} -> {group.name}", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
     def _update_summary(self):
         total = len(self.service.connections)
@@ -71,7 +92,8 @@ class ConnectionMixin:
 
         self._update_summary()
         conns = self.service.connections
-        if not conns:
+        groups = self._groups()
+        if not conns and not groups:
             label = BodyLabel("暂无连接\n点击「+ 添加」开始")
             label.setAlignment(Qt.AlignCenter)
             theme.set_label_color(label, "#94a3b8")
@@ -80,14 +102,22 @@ class ConnectionMixin:
             return
 
         keyword = filter_text.lower().strip()
-        grouped: dict[str, list[tuple[int, object]]] = {}
+        grouped: dict[str, list[tuple[int, object]]] = {group.id: [] for group in groups}
+        group_by_id = {group.id: group for group in groups}
         for index, conn in enumerate(conns):
-            group_name = (getattr(conn, "group", "") or "默认分组").strip() or "默认分组"
+            group = group_by_id.get(conn.group_id)
+            if group is None:
+                group = self.service.config.group_by_id(self.service.config.default_group_id())
+                conn.group_id = group.id
+                group_by_id[group.id] = group
+                grouped.setdefault(group.id, [])
+            group_name = group.name
             haystack = " ".join([conn.name, conn.host, conn.database or "", group_name]).lower()
             if keyword and keyword not in haystack:
                 continue
-            grouped.setdefault(group_name, []).append((index, conn))
+            grouped.setdefault(group.id, []).append((index, conn))
 
+        grouped = {group_id: items for group_id, items in grouped.items() if items or not keyword}
         if not grouped:
             label = BodyLabel("没有匹配的连接")
             label.setAlignment(Qt.AlignCenter)
@@ -96,18 +126,33 @@ class ConnectionMixin:
             self.conn_layout.insertWidget(0, label)
             return
 
-        for group_name in sorted(grouped):
-            items = grouped[group_name]
+        for group_id in sorted(grouped, key=lambda item: group_by_id[item].name if item in group_by_id else item):
+            group = group_by_id.get(group_id)
+            if group is None:
+                continue
+            items = grouped[group_id]
             enabled = sum(1 for _, conn in items if conn.enabled)
-            self._add_group_header(group_name, len(items), enabled)
+            collapsed = not keyword and group.collapsed
+            self._add_group_header(group, len(items), enabled, collapsed)
+            if collapsed:
+                continue
             for index, conn in items:
                 card = ConnCard(conn, index, self._show_conn_menu)
-                self.conn_layout.insertWidget(self.conn_layout.count() - 1, card)
+                card_wrap = QWidget()
+                card_wrap.setStyleSheet("background: transparent; border: none;")
+                card_lay = QHBoxLayout(card_wrap)
+                card_lay.setContentsMargins(18, 0, 6, 0)
+                card_lay.setSpacing(0)
+                card_lay.addWidget(card)
+                self.conn_layout.insertWidget(self.conn_layout.count() - 1, card_wrap)
 
     def _on_conn_search(self, text: str):
         self._refresh_conn_list(text)
 
-    def _show_conn_menu(self, index: int):
+    def _show_conn_menu(self, connection_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        if index is None:
+            return
         conn = self.service.connections[index]
         menu = QMenu(self)
         menu.setStyleSheet(f"""
@@ -124,28 +169,29 @@ class ConnectionMixin:
             QMenu::item#deleteAction:selected {{ background: {theme.DANGER_SOFT}; color: {theme.DANGER}; }}
             QMenu::separator {{ height: 1px; background: {theme.SIDEBAR_BORDER}; margin: 4px 8px; }}
         """)
-        menu.addAction("编辑连接", lambda: self._on_edit(index))
-        menu.addAction("测试连接", lambda: self._on_test(index))
+        menu.addAction("编辑连接", lambda: self._on_edit(connection_id))
+        menu.addAction("测试连接", lambda: self._on_test(connection_id))
         move_menu = menu.addMenu("移动到分组")
-        for group_name in self._group_names():
-            move_menu.addAction(group_name, lambda checked=False, name=group_name: self._move_connection_to_group(index, name))
+        for group in self._groups():
+            move_menu.addAction(group.name, lambda checked=False, gid=group.id: self._move_connection_to_group(connection_id, gid))
         move_menu.addSeparator()
-        move_menu.addAction("新建分组...", lambda: self._move_connection_to_new_group(index))
+        move_menu.addAction("新建分组...", lambda: self._move_connection_to_new_group(connection_id))
         toggle_text = "禁用" if conn.enabled else "启用"
-        menu.addAction(toggle_text, lambda: self._on_toggle(index))
+        menu.addAction(toggle_text, lambda: self._on_toggle(connection_id))
         menu.addSeparator()
-        delete_action = menu.addAction("删除", lambda: self._on_remove(index))
+        delete_action = menu.addAction("删除", lambda: self._on_remove(connection_id))
         delete_action.setObjectName("deleteAction")
         menu.exec_(self.cursor().pos())
 
-    def _move_connection_to_new_group(self, index: int):
-        name, ok = QInputDialog.getText(self, "新建分组", "分组名称")
-        if not ok:
+    def _move_connection_to_new_group(self, connection_id: str):
+        dialog = GroupDialog(self, "新建分组")
+        if dialog.exec_() != QDialog.Accepted or not dialog.result:
             return
-        name = name.strip()
-        if not name:
+        group = self.service.config.add_group(dialog.result)
+        if group is None:
+            InfoBar.warning("提示", f"分组「{dialog.result}」已存在", parent=self, position=InfoBarPosition.TOP_RIGHT)
             return
-        self._move_connection_to_group(index, name)
+        self._move_connection_to_group(connection_id, group.id)
 
     def _on_add(self):
         dialog = ConnDialog(self, ConnectionConfig(), "添加连接", self.service)
@@ -154,14 +200,20 @@ class ConnectionMixin:
             self._refresh_conn_list()
             InfoBar.success("成功", f"已添加连接 \"{dialog.result.name}\"", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
-    def _on_edit(self, index: int):
+    def _on_edit(self, connection_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        if index is None:
+            return
         dialog = ConnDialog(self, self.service.connections[index], "编辑连接", self.service)
         if dialog.exec_() == QDialog.Accepted and dialog.result:
             self.service.update(index, dialog.result)
             self._refresh_conn_list()
             InfoBar.success("成功", f"已更新连接 \"{dialog.result.name}\"", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
-    def _on_test(self, index: int):
+    def _on_test(self, connection_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        if index is None:
+            return
         conn = self.service.connections[index]
         self.status_label.setText(f"正在测试: {conn.name}...")
         theme.set_label_color(self.status_label, theme.TEXT_SUBTLE)
@@ -181,15 +233,20 @@ class ConnectionMixin:
         self._track_thread(thread)
         thread.start()
 
-    def _on_test_finished(self, ok: bool, msg: str, conn_name: str):
+    def _on_test_finished(self, ok: bool, msg: str, connection_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        conn_name = connection_id
+        if index is not None:
+            conn = self.service.connections[index]
+            conn_name = conn.name or conn.host
         if ok:
             InfoBar.success("连接成功", f"{conn_name}: {msg}", parent=self, position=InfoBarPosition.TOP_RIGHT)
         else:
             InfoBar.error("连接失败", f"{conn_name}: {msg}", parent=self, position=InfoBarPosition.TOP_RIGHT)
 
-    def _on_test_thread_finished(self, ok: bool, msg: str, conn_name: str):
+    def _on_test_thread_finished(self, ok: bool, msg: str, connection_id: str):
         for index, conn in enumerate(self.service.connections):
-            if (conn.name or conn.host) == conn_name:
+            if conn.id == connection_id:
                 self.service.config.connections[index].last_test_ok = ok
                 self.service.config.save()
                 self._refresh_conn_list()
@@ -198,14 +255,17 @@ class ConnectionMixin:
         self.progress.setValue(1)
         self.progress_frame.hide()
 
-    def _on_toggle(self, index: int):
-        self.service.toggle(index)
+    def _on_toggle(self, connection_id: str):
+        self.service.toggle_by_id(connection_id)
         self._refresh_conn_list()
 
-    def _on_remove(self, index: int):
+    def _on_remove(self, connection_id: str):
+        index = self.service.index_for_connection_id(connection_id)
+        if index is None:
+            return
         conn = self.service.connections[index]
         dialog = MessageBox("确认删除", f"确定要删除连接 \"{conn.name}\" 吗？", self)
         if dialog.exec_() == Dialog.Accepted:
-            self.service.remove(index)
+            self.service.remove_by_id(connection_id)
             self._refresh_conn_list()
             InfoBar.success("成功", "已删除连接", parent=self, position=InfoBarPosition.TOP_RIGHT)

@@ -1,6 +1,6 @@
 from PyQt5.QtCore import QMimeData, Qt
 from PyQt5.QtGui import QDrag
-from PyQt5.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QHBoxLayout, QLabel, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from qfluentwidgets import (
     BodyLabel,
@@ -12,8 +12,6 @@ from qfluentwidgets import (
     InfoBar,
     LineEdit,
     PrimaryPushButton,
-    ScrollArea,
-    SimpleCardWidget,
     SubtitleLabel,
     TransparentPushButton,
 )
@@ -24,6 +22,75 @@ from sql_batch_executor.ui import theme
 
 
 CONNECTION_DRAG_MIME = "application/x-sql-batch-connection-index"
+
+
+class GroupDialog(Dialog):
+    def __init__(self, parent, title: str = "新建分组", initial_name: str = ""):
+        super().__init__(title, "", parent)
+        self.contentLabel.hide()
+        self.setMinimumWidth(420)
+        self.yesButton.setText("保存")
+        self.cancelButton.setText("取消")
+        self.result = None
+
+        self.textLayout.addSpacing(4)
+        intro = CaptionLabel("用于区分测试环境、预发环境、正式环境等连接集合。")
+        theme.set_label_color(intro, theme.TEXT_MUTED)
+        self.textLayout.addWidget(intro)
+        self.textLayout.addSpacing(10)
+
+        self.textLayout.addWidget(BodyLabel("分组名称"))
+        self.name_edit = LineEdit()
+        self.name_edit.setPlaceholderText("例如：测试环境")
+        self.name_edit.setText(initial_name)
+        self.name_edit.setClearButtonEnabled(True)
+        self.name_edit.setFixedHeight(36)
+        self.name_edit.setStyleSheet(f"""
+            LineEdit {{
+                background: {theme.EDITOR_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 8px;
+                padding: 0 10px;
+                color: {theme.TEXT_PRIMARY};
+            }}
+            LineEdit:focus {{
+                border-color: {theme.PRIMARY};
+                background: {theme.EDITOR_PANEL};
+            }}
+        """)
+        self.textLayout.addWidget(self.name_edit)
+
+        self.yesButton.setFixedHeight(34)
+        self.cancelButton.setFixedHeight(34)
+        self.yesButton.setStyleSheet(theme.primary_button_qss())
+        self.cancelButton.setStyleSheet(f"""
+            QPushButton {{
+                background: {theme.SURFACE_SUBTLE};
+                color: {theme.TEXT_PRIMARY};
+                border: 1px solid {theme.BORDER};
+                border-radius: 7px;
+                font-weight: 600;
+                padding: 6px 18px;
+            }}
+            QPushButton:hover {{
+                background: {theme.PRIMARY_SOFT};
+                border-color: {theme.PRIMARY_BORDER};
+                color: {theme.PRIMARY};
+            }}
+        """)
+        self.setFixedSize(max(self.sizeHint().width(), 420), self.sizeHint().height())
+
+    def validate(self):
+        if not self.name_edit.text().strip():
+            InfoBar.warning("提示", "分组名称不能为空", parent=self)
+            return False
+        return True
+
+    def accept(self):
+        if not self.validate():
+            return
+        self.result = self.name_edit.text().strip()
+        super().accept()
 
 
 class ConnDialog(Dialog):
@@ -56,11 +123,19 @@ class ConnDialog(Dialog):
         form.addWidget(self.name_edit)
 
         form.addWidget(BodyLabel("分组"))
-        self.group_edit = LineEdit()
-        self.group_edit.setPlaceholderText("例如：测试环境 / 正式环境")
-        self.group_edit.setText(self._conn.group or "默认分组")
-        self.group_edit.setClearButtonEnabled(True)
-        form.addWidget(self.group_edit)
+        self.group_combo = ComboBox()
+        self.group_combo.setPlaceholderText("选择分组")
+        self._group_ids: list[str] = []
+        groups = list(getattr(self.service.config, "groups", []) or [])
+        current_group_id = self._conn.group_id or self.service.config.default_group_id()
+        if self.service.config.group_by_id(current_group_id) is None:
+            current_group_id = self.service.config.default_group_id()
+        for group in groups:
+            self.group_combo.addItem(group.name)
+            self._group_ids.append(group.id)
+        if current_group_id in self._group_ids:
+            self.group_combo.setCurrentIndex(self._group_ids.index(current_group_id))
+        form.addWidget(self.group_combo)
 
         hp_row = QHBoxLayout()
         hp_row.setSpacing(12)
@@ -115,7 +190,7 @@ class ConnDialog(Dialog):
         self.fetch_status = CaptionLabel("")
         form.addWidget(self.fetch_status)
 
-        for editor in (self.name_edit, self.group_edit, self.host_edit, self.port_edit, self.user_edit, self.pwd_edit, self.db_combo):
+        for editor in (self.name_edit, self.group_combo, self.host_edit, self.port_edit, self.user_edit, self.pwd_edit, self.db_combo):
             editor.setFixedHeight(34)
 
         self.textLayout.addLayout(form)
@@ -167,9 +242,12 @@ class ConnDialog(Dialog):
         if not self.validate():
             return
         host = self.host_edit.text().strip()
+        group_index = self.group_combo.currentIndex()
+        group_id = self._group_ids[group_index] if 0 <= group_index < len(self._group_ids) else self.service.config.default_group_id()
         self.result = ConnectionConfig(
+            id=self._conn.id,
             name=self.name_edit.text().strip() or host,
-            group=self.group_edit.text().strip() or "默认分组",
+            group_id=group_id,
             host=host,
             port=int(self.port_edit.text().strip() or 3306),
             user=self.user_edit.text().strip(),
@@ -189,7 +267,9 @@ class ExecSelectDialog(Dialog):
         self.cancelButton.setText("取消")
         self.selected = []
         self._connections = connections
-        self._checks = []
+        self.service = parent.service if parent is not None else None
+        self._tree = None
+        self._updating_checks = False
         self._build()
         self.setFixedSize(max(self.sizeHint().width(), 540), min(max(self.sizeHint().height(), 440), 680))
 
@@ -210,66 +290,112 @@ class ExecSelectDialog(Dialog):
         self.textLayout.addWidget(self._sel_all)
         self.textLayout.addSpacing(8)
 
-        scroll = ScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_lay = QVBoxLayout(scroll_widget)
-        scroll_lay.setContentsMargins(0, 0, 8, 0)
-        scroll_lay.setSpacing(6)
-
-        for conn in self._connections:
-            card = SimpleCardWidget()
-            card.setCursor(Qt.PointingHandCursor)
-            card.setStyleSheet(f"""
-                SimpleCardWidget {{
-                    background: {theme.SURFACE};
-                    border: 1px solid {theme.BORDER};
-                    border-radius: 10px;
-                }}
-                SimpleCardWidget:hover {{
-                    background: {theme.SURFACE_SUBTLE};
-                    border-color: {theme.PRIMARY_BORDER};
-                }}
-            """)
-            card_lay = QHBoxLayout(card)
-            card_lay.setContentsMargins(14, 10, 14, 10)
-            card_lay.setSpacing(10)
-
-            cb = CheckBox()
-            cb.setChecked(True)
-            cb.stateChanged.connect(self._update_count)
-            card_lay.addWidget(cb)
-            self._checks.append(cb)
-
-            info_col = QVBoxLayout()
-            info_col.setSpacing(2)
-            name = BodyLabel(conn.name or conn.host)
-            info_col.addWidget(name)
-            sub = CaptionLabel(f"{conn.host}:{conn.port}  /  {conn.database or '-'}")
-            theme.set_label_color(sub, theme.TEXT_MUTED)
-            info_col.addWidget(sub)
-            card_lay.addLayout(info_col, 1)
-
-            def make_handler(_cb):
-                return lambda e: _cb.setChecked(not _cb.isChecked())
-
-            card.mousePressEvent = make_handler(cb)
-            scroll_lay.addWidget(card)
-
-        scroll_lay.addStretch()
-        scroll.setWidget(scroll_widget)
-        scroll.setMinimumHeight(280)
-        self.textLayout.addWidget(scroll, 1)
+        self._tree = QTreeWidget()
+        self._tree.setHeaderLabels(["分组 / 连接", "地址 / 数据库"])
+        self._tree.setRootIsDecorated(True)
+        self._tree.setAlternatingRowColors(True)
+        self._tree.setColumnWidth(0, 230)
+        self._tree.setMinimumHeight(280)
+        self._tree.itemChanged.connect(self._on_tree_item_changed)
+        self._tree.setStyleSheet(f"""
+            QTreeWidget {{
+                background: {theme.SURFACE};
+                color: {theme.TEXT_PRIMARY};
+                border: 1px solid {theme.BORDER};
+                border-radius: 8px;
+                padding: 4px;
+                selection-background-color: {theme.SELECTED_BG};
+                selection-color: {theme.TEXT_PRIMARY};
+            }}
+            QTreeWidget::item {{
+                min-height: 28px;
+                border-radius: 5px;
+                padding: 4px;
+            }}
+            QTreeWidget::item:hover {{
+                background: {theme.PRIMARY_SOFT};
+            }}
+            QHeaderView::section {{
+                background: {theme.SURFACE_SUBTLE};
+                color: {theme.TEXT_MUTED};
+                border: none;
+                border-bottom: 1px solid {theme.BORDER};
+                padding: 7px;
+                font-weight: 600;
+            }}
+        """)
+        self.textLayout.addWidget(self._tree, 1)
+        self._populate_tree()
 
         self._update_count()
 
     def _on_select_all(self, state):
-        for cb in self._checks:
-            cb.setChecked(bool(state))
+        if not self._tree:
+            return
+        self._updating_checks = True
+        check_state = Qt.Checked if state else Qt.Unchecked
+        for index in range(self._tree.topLevelItemCount()):
+            group_item = self._tree.topLevelItem(index)
+            group_item.setCheckState(0, check_state)
+            for child_index in range(group_item.childCount()):
+                group_item.child(child_index).setCheckState(0, check_state)
+        self._updating_checks = False
+        self._update_count()
+
+    def _populate_tree(self):
+        grouped: dict[str, list[tuple[int, object]]] = {}
+        for index, conn in enumerate(self._connections):
+            group_name = self.service.config.group_name(conn.group_id) if self.service else "默认分组"
+            grouped.setdefault(group_name, []).append((index, conn))
+
+        self._updating_checks = True
+        for group_name in sorted(grouped):
+            items = grouped[group_name]
+            group_item = QTreeWidgetItem([f"{group_name} ({len(items)})", ""])
+            group_item.setFlags(group_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
+            group_item.setCheckState(0, Qt.Checked)
+            group_item.setExpanded(True)
+            self._tree.addTopLevelItem(group_item)
+
+            for index, conn in items:
+                child = QTreeWidgetItem([
+                    conn.name or conn.host,
+                    f"{conn.host}:{conn.port}  /  {conn.database or '-'}",
+                ])
+                child.setFlags(child.flags() | Qt.ItemIsUserCheckable)
+                child.setCheckState(0, Qt.Checked)
+                child.setData(0, Qt.UserRole, index)
+                group_item.addChild(child)
+        self._updating_checks = False
+
+    def _on_tree_item_changed(self, item, column):
+        if self._updating_checks or column != 0:
+            return
+        self._sync_select_all_state()
+        self._update_count()
+
+    def _checked_indices(self) -> list[int]:
+        if not self._tree:
+            return []
+        selected: list[int] = []
+        for group_index in range(self._tree.topLevelItemCount()):
+            group_item = self._tree.topLevelItem(group_index)
+            for child_index in range(group_item.childCount()):
+                child = group_item.child(child_index)
+                if child.checkState(0) == Qt.Checked:
+                    selected.append(int(child.data(0, Qt.UserRole)))
+        return selected
+
+    def _sync_select_all_state(self):
+        checked = len(self._checked_indices())
+        total = len(self._connections)
+        self._sel_all.blockSignals(True)
+        self._sel_all.setChecked(total > 0 and checked == total)
+        self._sel_all.blockSignals(False)
 
     def _update_count(self):
-        total = len(self._checks)
-        checked = sum(1 for cb in self._checks if cb.isChecked())
+        total = len(self._connections)
+        checked = len(self._checked_indices())
         self._count_label.setText(f"已选 {checked} / {total}")
         theme.set_label_color(self._count_label, theme.PRIMARY if checked else theme.TEXT_SUBTLE)
         if checked > 0:
@@ -280,7 +406,7 @@ class ExecSelectDialog(Dialog):
             self.yesButton.setEnabled(False)
 
     def accept(self):
-        self.selected = [i for i, cb in enumerate(self._checks) if cb.isChecked()]
+        self.selected = self._checked_indices()
         super().accept()
 
 
@@ -301,7 +427,7 @@ class ConnCard(CardWidget):
                 border-color: {theme.PRIMARY_BORDER};
             }}
         """)
-        self._index = index
+        self._connection_id = conn.id
         self._on_menu = on_menu
         self._drag_start_pos = None
 
@@ -357,11 +483,11 @@ class ConnCard(CardWidget):
             TransparentPushButton {{ color: {theme.TEXT_MUTED}; border-radius: 10px; }}
             TransparentPushButton:hover {{ background: {theme.PRIMARY_SOFT}; color: {theme.PRIMARY}; }}
         """)
-        menu_btn.clicked.connect(lambda: self._on_menu(self._index))
+        menu_btn.clicked.connect(lambda: self._on_menu(self._connection_id))
         lay.addWidget(menu_btn)
 
     def contextMenuEvent(self, e):
-        self._on_menu(self._index)
+        self._on_menu(self._connection_id)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -377,7 +503,7 @@ class ConnCard(CardWidget):
             return
 
         mime = QMimeData()
-        mime.setData(CONNECTION_DRAG_MIME, str(self._index).encode("utf-8"))
+        mime.setData(CONNECTION_DRAG_MIME, self._connection_id.encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.exec_(Qt.MoveAction)
@@ -386,23 +512,55 @@ class ConnCard(CardWidget):
 class GroupHeader(QWidget):
     def __init__(
         self,
+        group_id: str,
         group_name: str,
         total: int,
         enabled: int,
         on_rename,
+        on_toggle,
         on_drop_connection,
+        collapsed: bool = False,
         parent=None,
     ):
         super().__init__(parent)
+        self.group_id = group_id
         self.group_name = group_name
         self._on_rename = on_rename
+        self._on_toggle = on_toggle
         self._on_drop_connection = on_drop_connection
+        self._collapsed = collapsed
         self.setAcceptDrops(True)
-        self.setStyleSheet("background: transparent; border: none;")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setObjectName("groupHeader")
+        self._apply_normal_style()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 10, 2, 2)
+        layout.setContentsMargins(4, 8, 6, 4)
         layout.setSpacing(6)
+
+        toggle_btn = QToolButton()
+        toggle_btn.setText("▸" if collapsed else "▾")
+        toggle_btn.setFixedSize(22, 22)
+        toggle_btn.setToolTip("展开分组" if collapsed else "折叠分组")
+        toggle_btn.setCursor(Qt.PointingHandCursor)
+        toggle_btn.setStyleSheet(f"""
+            QToolButton {{
+                background: transparent;
+                border: none;
+                color: {theme.TEXT_MUTED};
+                border-radius: 6px;
+                font-size: 15px;
+                font-weight: 700;
+                padding: 0;
+            }}
+            QToolButton:hover {{
+                background: {theme.PRIMARY_SOFT};
+                color: {theme.PRIMARY};
+            }}
+        """)
+        toggle_btn.clicked.connect(lambda: self._on_toggle(self.group_id))
+        layout.addWidget(toggle_btn)
+        self.toggle_btn = toggle_btn
 
         self.name_label = QLabel(group_name)
         self.name_label.setStyleSheet(f"""
@@ -433,14 +591,43 @@ class GroupHeader(QWidget):
         """)
         layout.addWidget(count)
 
-    def mouseDoubleClickEvent(self, event):
+    def _apply_normal_style(self):
+        self.setStyleSheet("""
+            #groupHeader {
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+            }
+        """)
+
+    def _apply_hover_style(self):
+        self.setStyleSheet(f"""
+            #groupHeader {{
+                background: {theme.SIDEBAR_SURFACE};
+                border: 1px solid {theme.SIDEBAR_BORDER};
+                border-radius: 8px;
+            }}
+        """)
+
+    def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._on_rename(self.group_name)
+            self._on_toggle(self.group_id)
             return
+        super().mousePressEvent(event)
+
+    def enterEvent(self, event):
+        self._apply_hover_style()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._apply_normal_style()
+        super().leaveEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
         super().mouseDoubleClickEvent(event)
 
     def contextMenuEvent(self, event):
-        self._on_rename(self.group_name)
+        self._on_rename(self.group_id)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasFormat(CONNECTION_DRAG_MIME):
@@ -454,18 +641,17 @@ class GroupHeader(QWidget):
         event.ignore()
 
     def dragLeaveEvent(self, event):
-        self.setStyleSheet("background: transparent; border: none;")
+        self._apply_normal_style()
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event):
-        self.setStyleSheet("background: transparent; border: none;")
+        self._apply_normal_style()
         if not event.mimeData().hasFormat(CONNECTION_DRAG_MIME):
             event.ignore()
             return
-        try:
-            index = int(bytes(event.mimeData().data(CONNECTION_DRAG_MIME)).decode("utf-8"))
-        except ValueError:
+        connection_id = bytes(event.mimeData().data(CONNECTION_DRAG_MIME)).decode("utf-8").strip()
+        if not connection_id:
             event.ignore()
             return
-        self._on_drop_connection(index, self.group_name)
+        self._on_drop_connection(connection_id, self.group_id)
         event.acceptProposedAction()

@@ -135,10 +135,16 @@ class AppTitleBar(MSFluentTitleBar):
                 button.update()
 
     def _toggle_max_restore(self):
-        if self.window().isMaximized():
-            self.window().showNormal()
+        window = self.window()
+        if window.isMaximized():
+            if hasattr(window, "restore_normal_window"):
+                window.restore_normal_window()
+            else:
+                window.showNormal()
         else:
-            self.window().showMaximized()
+            if hasattr(window, "_remember_normal_geometry"):
+                window._remember_normal_geometry()
+            window.showMaximized()
         self._update_max_button()
 
     def _update_max_button(self):

@@ -33,22 +33,147 @@ class ThemeTokens:
 @dataclass(frozen=True)
 class ThemeColorPreset:
     name: str
+    app_background: str
+    app_chrome: str
+    surface: str
+    surface_subtle: str
+    border: str
+    strong_border: str
+    text_primary: str
+    text_muted: str
+    text_subtle: str
     primary: str
     primary_hover: str
     primary_pressed: str
     primary_soft: str
-    primary_border: str  # derived
-    selected_bg: str  # derived
+    primary_border: str
+    selected_bg: str
+    editor_bg: str
+    editor_panel: str
 
 
 DEFAULT_THEME_COLOR = "blue"
 THEME_COLOR_PRESETS: dict[str, ThemeColorPreset] = {
-    "blue": ThemeColorPreset("蓝色", "#2563eb", "#1d4ed8", "#1e40af", "#dbeafe", "#bfdbfe", "#dbeafe"),
-    "cyan": ThemeColorPreset("青色", "#0891b2", "#0e7490", "#155e75", "#cffafe", "#a5f3fc", "#cffafe"),
-    "green": ThemeColorPreset("绿色", "#059669", "#047857", "#065f46", "#d1fae5", "#6ee7b7", "#d1fae5"),
-    "violet": ThemeColorPreset("紫色", "#7c3aed", "#6d28d9", "#5b21b6", "#ede9fe", "#c4b5fd", "#ede9fe"),
-    "orange": ThemeColorPreset("橙色", "#ea580c", "#c2410c", "#9a3412", "#ffedd5", "#fdba74", "#ffedd5"),
-    "rose": ThemeColorPreset("玫红", "#e11d48", "#be123c", "#9f1239", "#ffe4e6", "#fda4af", "#ffe4e6"),
+    "blue": ThemeColorPreset(
+        "蓝色",
+        "#edf4ff",
+        "#f8fbff",
+        "#ffffff",
+        "#f2f7ff",
+        "#c8d9f0",
+        "#aebfda",
+        "#102033",
+        "#5f7188",
+        "#91a2b8",
+        "#2563eb",
+        "#1d4ed8",
+        "#1e40af",
+        "#dbeafe",
+        "#bfdbfe",
+        "#dbeafe",
+        "#f8fbff",
+        "#ffffff",
+    ),
+    "cyan": ThemeColorPreset(
+        "青色",
+        "#e8f7f8",
+        "#f3fbfb",
+        "#ffffff",
+        "#effafa",
+        "#b8d9dc",
+        "#9cc8ce",
+        "#0e2f36",
+        "#53767b",
+        "#82a6ab",
+        "#0891b2",
+        "#0e7490",
+        "#155e75",
+        "#cffafe",
+        "#a5f3fc",
+        "#cffafe",
+        "#f6fcfc",
+        "#ffffff",
+    ),
+    "green": ThemeColorPreset(
+        "绿色",
+        "#edf8f1",
+        "#f7fbf6",
+        "#ffffff",
+        "#f1faf4",
+        "#bfd9c8",
+        "#a6c8b1",
+        "#153323",
+        "#5c7765",
+        "#8fa696",
+        "#059669",
+        "#047857",
+        "#065f46",
+        "#d1fae5",
+        "#6ee7b7",
+        "#d1fae5",
+        "#f8fcf9",
+        "#ffffff",
+    ),
+    "violet": ThemeColorPreset(
+        "紫色",
+        "#f4efff",
+        "#fbf8ff",
+        "#ffffff",
+        "#f7f2ff",
+        "#d8c7f0",
+        "#c5afe4",
+        "#24183d",
+        "#6c5b83",
+        "#9b8cb0",
+        "#7c3aed",
+        "#6d28d9",
+        "#5b21b6",
+        "#ede9fe",
+        "#c4b5fd",
+        "#ede9fe",
+        "#fbf8ff",
+        "#ffffff",
+    ),
+    "orange": ThemeColorPreset(
+        "橙色",
+        "#fff4e8",
+        "#fffbf6",
+        "#ffffff",
+        "#fff7ed",
+        "#e8cbb0",
+        "#d5b18d",
+        "#3d2414",
+        "#806650",
+        "#aa9179",
+        "#ea580c",
+        "#c2410c",
+        "#9a3412",
+        "#ffedd5",
+        "#fdba74",
+        "#ffedd5",
+        "#fffbf6",
+        "#ffffff",
+    ),
+    "rose": ThemeColorPreset(
+        "玫红",
+        "#fff0f4",
+        "#fff8fa",
+        "#ffffff",
+        "#fff3f6",
+        "#ebc1cb",
+        "#dca8b5",
+        "#3e1724",
+        "#805564",
+        "#aa8491",
+        "#e11d48",
+        "#be123c",
+        "#9f1239",
+        "#ffe4e6",
+        "#fda4af",
+        "#ffe4e6",
+        "#fff9fb",
+        "#ffffff",
+    ),
 }
 
 
@@ -144,12 +269,23 @@ def apply_theme_color(color_key: str) -> ThemeColorPreset:
     preset = THEME_COLOR_PRESETS[normalized]
     THEME = replace(
         _BASE_THEME,
+        app_background=preset.app_background,
+        app_chrome=preset.app_chrome,
+        surface=preset.surface,
+        surface_subtle=preset.surface_subtle,
+        border=preset.border,
+        strong_border=preset.strong_border,
+        text_primary=preset.text_primary,
+        text_muted=preset.text_muted,
+        text_subtle=preset.text_subtle,
         primary=preset.primary,
         primary_hover=preset.primary_hover,
         primary_pressed=preset.primary_pressed,
         primary_soft=preset.primary_soft,
         primary_border=preset.primary_border,
         selected_bg=preset.selected_bg,
+        editor_bg=preset.editor_bg,
+        editor_panel=preset.editor_panel,
     )
     STYLE_FACTORY = StyleSheetFactory(THEME)
     _current_theme_color = normalized

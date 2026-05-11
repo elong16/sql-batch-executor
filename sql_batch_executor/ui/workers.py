@@ -16,7 +16,7 @@ class TestConnectionWorker(QObject):
     @pyqtSlot()
     def run(self):
         ok, message = self.database_client.test(self.conn)
-        self.finished.emit(ok, message, self.conn.name or self.conn.host)
+        self.finished.emit(ok, message, self.conn.id)
 
 
 class SqlExecutionWorker(QObject):

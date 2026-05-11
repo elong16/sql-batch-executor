@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Sequence
 
-from sql_batch_executor.core.config_manager import ConfigManager, ConnectionConfig
+from sql_batch_executor.core.config_manager import ConfigManager, ConnectionConfig, GroupConfig
 from sql_batch_executor.core.history_manager import ExecutionHistoryManager, HistoryEntry
 from sql_batch_executor.core.sql_script import SqlStatement, split_sql_script
 from sql_batch_executor.core.sql_safety import SqlSafetyChecker
@@ -42,6 +42,10 @@ class ConnectionService:
     def connections(self) -> list[ConnectionConfig]:
         return self.config.connections
 
+    @property
+    def groups(self) -> list[GroupConfig]:
+        return self.config.groups
+
     def enabled_connections(self) -> list[ConnectionConfig]:
         return [conn for conn in self.connections if conn.enabled]
 
@@ -56,6 +60,24 @@ class ConnectionService:
 
     def toggle(self, index: int):
         self.config.toggle(index)
+
+    def index_for_connection_id(self, connection_id: str) -> int | None:
+        return self.config.index_for_connection_id(connection_id)
+
+    def update_by_id(self, connection_id: str, conn: ConnectionConfig):
+        index = self.index_for_connection_id(connection_id)
+        if index is not None:
+            self.config.update(index, conn)
+
+    def remove_by_id(self, connection_id: str):
+        index = self.index_for_connection_id(connection_id)
+        if index is not None:
+            self.config.remove(index)
+
+    def toggle_by_id(self, connection_id: str):
+        index = self.index_for_connection_id(connection_id)
+        if index is not None:
+            self.config.toggle(index)
 
     def test(self, index: int) -> tuple[bool, str]:
         return self.database.test(self.connections[index])
