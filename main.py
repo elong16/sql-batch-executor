@@ -5,7 +5,7 @@ if sys.platform == "win32":
     import ctypes
 
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-        "sql.batch.executor.app.icon.v2"
+        "sqlpulse.app.icon.v1"
     )
 
 app = QApplication(sys.argv)

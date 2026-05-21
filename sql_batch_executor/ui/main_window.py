@@ -26,7 +26,7 @@ class MainWindow(LayoutMixin, ConnectionMixin, ExecutionMixin, ResultsMixin, Fra
         self.preferences = PreferenceManager()
         theme.apply_theme_color(self.preferences.theme_color())
         setThemeColor(theme.PRIMARY)
-        self.setWindowTitle("SQL 批量执行器")
+        self.setWindowTitle("SqlPulse")
         self.setWindowIcon(app_icon())
         self.app_title_bar = AppTitleBar(self)
         self.setTitleBar(self.app_title_bar)
@@ -35,7 +35,11 @@ class MainWindow(LayoutMixin, ConnectionMixin, ExecutionMixin, ResultsMixin, Fra
 
         self.service = ConnectionService()
         self.results = []
+        self._result_targets = []
         self._tab_buttons = []
+        self._group_tab_buttons = []
+        self._result_groups = []
+        self._current_group_tab = 0
         self._current_tab = 0
         self._threads: list[QThread] = []
         self._root_lay = None
@@ -185,6 +189,7 @@ class MainWindow(LayoutMixin, ConnectionMixin, ExecutionMixin, ResultsMixin, Fra
 
         sql_text = self.sql_input.toPlainText() if hasattr(self, "sql_input") else ""
         results = list(self.results)
+        result_targets = list(getattr(self, "_result_targets", []))
         search_text = self.search_edit.text() if hasattr(self, "search_edit") else ""
         continue_on_error = self.continue_on_error_check.isChecked() if hasattr(self, "continue_on_error_check") else False
 
@@ -200,6 +205,7 @@ class MainWindow(LayoutMixin, ConnectionMixin, ExecutionMixin, ResultsMixin, Fra
         if hasattr(self, "continue_on_error_check"):
             self.continue_on_error_check.setChecked(continue_on_error)
         self.results = results
+        self._result_targets = result_targets
         if hasattr(self, "search_edit"):
             self.search_edit.setText(search_text)
         if self.results:

@@ -28,6 +28,9 @@ class ResultsMixin:
                 widget.deleteLater()
 
         self._tab_buttons.clear()
+        self._group_tab_buttons = []
+        self._result_groups = []
+        self._current_group_tab = 0
         self._current_tab = 0
         self._page_cache = {}
         self._content_stack = None
@@ -68,24 +71,9 @@ class ResultsMixin:
         summary_lay.addWidget(elapsed_label)
         self._results_lay.addWidget(summary_bar)
 
-        tab_bar = QFrame()
-        tab_bar.setStyleSheet(f"background: {theme.SURFACE}; border-bottom: 1px solid {theme.BORDER};")
-        tab_lay = QHBoxLayout(tab_bar)
-        tab_lay.setContentsMargins(12, 0, 0, 0)
-        tab_lay.setSpacing(0)
-
-        for index, result in enumerate(self.results):
-            icon = self._result_tab_icon(result)
-            button = PushButton(f"  {icon} {result.connection_name}")
-            button.setCursor(Qt.PointingHandCursor)
-            button.setFixedHeight(36)
-            button.setStyleSheet(self._tab_style(index == 0))
-            button.clicked.connect(lambda checked, idx=index: self._select_tab(idx))
-            tab_lay.addWidget(button)
-            self._tab_buttons.append(button)
-
-        tab_lay.addStretch()
-        self._results_lay.addWidget(tab_bar)
+        self._result_groups = self._build_result_groups()
+        self._add_group_tab_bar()
+        self._add_connection_tab_bar()
 
         self._content_stack = QStackedWidget()
         self._content_stack.setStyleSheet("background: transparent; border: none;")
@@ -98,6 +86,123 @@ class ResultsMixin:
         if self.results:
             self._select_tab(0)
 
+    def _build_result_groups(self) -> list[dict]:
+        targets = list(getattr(self, "_result_targets", []) or [])
+        groups_by_id = {group.id: group for group in getattr(self.service, "groups", [])}
+        fallback_group_id = "__ungrouped__"
+        grouped: dict[str, dict] = {}
+
+        for index, result in enumerate(self.results):
+            target = targets[index] if index < len(targets) else None
+            group_id = getattr(target, "group_id", "") if target is not None else ""
+            group = groups_by_id.get(group_id)
+            if group is None:
+                group_id = group_id or fallback_group_id
+                group_name = self.service.config.group_name(group_id) if group_id != fallback_group_id else "未分组"
+            else:
+                group_name = group.name
+            if group_id not in grouped:
+                grouped[group_id] = {
+                    "id": group_id,
+                    "name": group_name,
+                    "indices": [],
+                    "success": 0,
+                }
+            grouped[group_id]["indices"].append(index)
+            if result.success:
+                grouped[group_id]["success"] += 1
+
+        return list(grouped.values())
+
+    def _add_group_tab_bar(self):
+        if len(self._result_groups) <= 1:
+            return
+
+        group_bar = QFrame()
+        group_bar.setStyleSheet(f"background: {theme.SURFACE}; border-bottom: 1px solid {theme.BORDER};")
+        group_lay = QHBoxLayout(group_bar)
+        group_lay.setContentsMargins(12, 0, 0, 0)
+        group_lay.setSpacing(0)
+
+        for group_index, group in enumerate(self._result_groups):
+            total = len(group["indices"])
+            text = f"  {group['name']} {group['success']}/{total}"
+            button = PushButton(text)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFixedHeight(38)
+            button.setStyleSheet(self._tab_style(group_index == self._current_group_tab))
+            button.clicked.connect(lambda checked, idx=group_index: self._select_group_tab(idx))
+            group_lay.addWidget(button)
+            self._group_tab_buttons.append(button)
+
+        group_lay.addStretch()
+        self._results_lay.addWidget(group_bar)
+
+    def _add_connection_tab_bar(self):
+        tab_bar = QFrame()
+        tab_bar.setStyleSheet(f"background: {theme.SURFACE_SUBTLE}; border-bottom: 1px solid {theme.BORDER};")
+        tab_lay = QHBoxLayout(tab_bar)
+        tab_lay.setContentsMargins(12, 0, 0, 0)
+        tab_lay.setSpacing(0)
+        self._tab_buttons = []
+        self._connection_tab_bar = tab_bar
+        self._connection_tab_lay = tab_lay
+        self._populate_connection_tabs()
+        self._results_lay.addWidget(tab_bar)
+
+    def _populate_connection_tabs(self):
+        if not hasattr(self, "_connection_tab_lay") or self._connection_tab_lay is None:
+            return
+
+        while self._connection_tab_lay.count():
+            item = self._connection_tab_lay.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self._tab_buttons = []
+        if not self._result_groups:
+            return
+
+        group = self._result_groups[self._current_group_tab]
+        for index in group["indices"]:
+            result = self.results[index]
+            icon = self._result_tab_icon(result)
+            button = PushButton(f"  {icon} {result.connection_name}")
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFixedHeight(36)
+            button.setStyleSheet(self._tab_style(index == self._current_tab))
+            button.clicked.connect(lambda checked, idx=index: self._select_tab(idx))
+            self._connection_tab_lay.addWidget(button)
+            self._tab_buttons.append((index, button))
+
+        self._connection_tab_lay.addStretch()
+
+    def _refresh_group_tab_buttons(self):
+        for group_index, button in enumerate(self._group_tab_buttons):
+            if group_index >= len(self._result_groups):
+                continue
+            group = self._result_groups[group_index]
+            total = len(group["indices"])
+            button.setText(f"  {group['name']} {group['success']}/{total}")
+
+    def _group_index_for_result_index(self, result_index: int) -> int:
+        for group_index, group in enumerate(self._result_groups):
+            if result_index in group["indices"]:
+                return group_index
+        return 0
+
+    def _select_group_tab(self, group_index: int):
+        if not (0 <= group_index < len(self._result_groups)):
+            return
+        if group_index != self._current_group_tab and self._group_tab_buttons:
+            self._group_tab_buttons[self._current_group_tab].setStyleSheet(self._tab_style(False))
+            self._group_tab_buttons[group_index].setStyleSheet(self._tab_style(True))
+        self._current_group_tab = group_index
+        self._current_tab = self._result_groups[group_index]["indices"][0]
+        self._populate_connection_tabs()
+        self._select_tab(self._current_tab, sync_group=False)
+
     def _refresh_result_view(self, index: int):
         if not self.results or not hasattr(self, "_content_stack") or self._content_stack is None:
             self._show_results()
@@ -105,10 +210,19 @@ class ResultsMixin:
         if not (0 <= index < len(self.results)):
             return
 
-        if self._tab_buttons and index < len(self._tab_buttons):
+        if getattr(self, "_result_groups", None):
+            new_groups = self._build_result_groups()
+            if len(new_groups) == len(self._result_groups):
+                self._result_groups = new_groups
+                self._refresh_group_tab_buttons()
+
+        if self._tab_buttons:
             result = self.results[index]
             icon = self._result_tab_icon(result)
-            self._tab_buttons[index].setText(f"  {icon} {result.connection_name}")
+            for tab_index, button in self._tab_buttons:
+                if tab_index == index:
+                    button.setText(f"  {icon} {result.connection_name}")
+                    break
 
         old_page = self._page_cache.pop(index, None)
         was_current = index == self._current_tab
@@ -148,18 +262,26 @@ class ResultsMixin:
             QPushButton:hover {{ background: {theme.SURFACE_SUBTLE}; }}
         """
 
-    def _select_tab(self, index: int):
+    def _select_tab(self, index: int, sync_group: bool = True):
+        if not (0 <= index < len(self.results)):
+            return
+        if sync_group and getattr(self, "_result_groups", None):
+            group_index = self._group_index_for_result_index(index)
+            if group_index != self._current_group_tab:
+                self._select_group_tab(group_index)
+                return
+
         if index not in self._page_cache:
             result = self.results[index]
             page = self._build_result_page(result)
             self._content_stack.addWidget(page)
             self._page_cache[index] = page
 
-        if index != self._current_tab and self._tab_buttons:
-            self._tab_buttons[self._current_tab].setStyleSheet(self._tab_style(False))
-            self._tab_buttons[index].setStyleSheet(self._tab_style(True))
+        if self._tab_buttons:
+            for tab_index, button in self._tab_buttons:
+                button.setStyleSheet(self._tab_style(tab_index == index))
 
-        self._content_stack.setCurrentIndex(index + 1)
+        self._content_stack.setCurrentWidget(self._page_cache[index])
         self._current_tab = index
 
     def _copy_to_clipboard(self, text: str):

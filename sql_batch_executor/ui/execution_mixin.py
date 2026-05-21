@@ -139,6 +139,7 @@ class ExecutionMixin:
         self.progress.setMaximum(total)
         self.progress_frame.show()
         self.cancel_btn.show()
+        self._result_targets = list(targets)
         self.results = [
             ExecutionResult(
                 connection_name=target.name or target.host,

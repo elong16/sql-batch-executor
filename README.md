@@ -1,6 +1,6 @@
-# SQL Batch Executor
+# SqlPulse
 
-一个基于 PyQt5 和 PyQt-Fluent-Widgets 的 MySQL 批量 SQL 执行工具。
+一个基于 PyQt5 和 PyQt-Fluent-Widgets 的 MySQL 批量 SQL 执行工具，适合批量执行插入、更新等 DML 脚本。
 
 ## 功能
 
@@ -36,7 +36,7 @@ build_exe.bat
 首次构建会自动安装运行依赖和 PyInstaller。构建完成后，EXE 位于：
 
 ```text
-dist\SQL批量执行器.exe
+dist\SqlPulse.exe
 ```
 
 修改代码后，重新双击 `build_exe.bat` 即可重新打包。

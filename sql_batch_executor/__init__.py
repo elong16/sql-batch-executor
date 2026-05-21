@@ -1,1 +1,1 @@
-"""SQL Batch Executor application package."""
+"""SqlPulse application package."""

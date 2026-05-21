@@ -1,42 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="42" y1="26" x2="214" y2="230" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#111827"/>
-      <stop offset="0.58" stop-color="#0F766E"/>
-      <stop offset="1" stop-color="#22D3EE"/>
+    <linearGradient id="pinkStroke" x1="210" y1="166" x2="806" y2="815" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff9bd8"/>
+      <stop offset="0.48" stop-color="#ff2f9d"/>
+      <stop offset="1" stop-color="#d70a72"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(132 113) rotate(90) scale(111 118)">
-      <stop offset="0" stop-color="#A7F3D0" stop-opacity="0.72"/>
-      <stop offset="0.58" stop-color="#2DD4BF" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#0F172A" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="db" x1="76" y1="58" x2="174" y2="187" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#F8FAFC"/>
-      <stop offset="1" stop-color="#CCFBF1"/>
+    <linearGradient id="hood" x1="296" y1="154" x2="696" y2="579" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#30333d"/>
+      <stop offset="1" stop-color="#11131a"/>
     </linearGradient>
-    <linearGradient id="arrow" x1="132" y1="133" x2="190" y2="191" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#E0F2FE"/>
-      <stop offset="1" stop-color="#67E8F9"/>
+    <linearGradient id="face" x1="354" y1="250" x2="656" y2="586" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff8fb"/>
+      <stop offset="1" stop-color="#ffe1ef"/>
     </linearGradient>
-    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#020617" flood-opacity="0.38"/>
+    <filter id="softShadow" x="-18%" y="-18%" width="136%" height="142%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#5f0a35" flood-opacity="0.28"/>
+    </filter>
+    <filter id="glow" x="-60%" y="-80%" width="220%" height="260%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
   </defs>
 
-  <rect x="18" y="18" width="220" height="220" rx="54" fill="url(#bg)"/>
-  <rect x="18" y="18" width="220" height="220" rx="54" fill="url(#glow)"/>
-  <path d="M61 42H195C205.5 42 214 50.5 214 61V195C214 205.5 205.5 214 195 214H61C50.5 214 42 205.5 42 195V61C42 50.5 50.5 42 61 42Z" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2"/>
-
   <g filter="url(#softShadow)">
-    <path d="M67 83C67 67.5 94.3 55 128 55C161.7 55 189 67.5 189 83V164C189 179.5 161.7 192 128 192C94.3 192 67 179.5 67 164V83Z" fill="url(#db)"/>
-    <ellipse cx="128" cy="83" rx="61" ry="28" fill="#FFFFFF"/>
-    <ellipse cx="128" cy="83" rx="43" ry="16" fill="#E0F2FE"/>
-    <path d="M189 112C189 127.5 161.7 140 128 140C94.3 140 67 127.5 67 112" fill="none" stroke="#5EEAD4" stroke-width="9" stroke-linecap="round"/>
-    <path d="M189 143C189 158.5 161.7 171 128 171C94.3 171 67 158.5 67 143" fill="none" stroke="#14B8A6" stroke-width="9" stroke-linecap="round"/>
+    <path d="M263 479C250 325 358 187 509 187C660 187 769 325 756 479C747 588 650 651 509 651C368 651 272 588 263 479Z" fill="url(#hood)"/>
+    <path d="M282 410C246 416 221 448 229 485C238 527 277 552 318 540L310 437C303 420 294 411 282 410Z" fill="#252832"/>
+    <path d="M736 410C772 416 797 448 789 485C780 527 741 552 700 540L708 437C715 420 724 411 736 410Z" fill="#252832"/>
+    <path d="M350 365C363 291 424 242 509 242C594 242 655 291 668 365C690 492 618 584 509 584C400 584 328 492 350 365Z" fill="url(#face)"/>
+    <path d="M345 376C370 287 425 248 509 248C593 248 648 287 673 376C631 349 584 336 509 336C434 336 387 349 345 376Z" fill="#1c1f28"/>
+    <path d="M437 338C458 327 482 321 509 321C536 321 560 327 581 338C560 352 536 359 509 359C482 359 458 352 437 338Z" fill="#f7d03f"/>
+    <circle cx="423" cy="444" r="33" fill="#372436"/>
+    <circle cx="595" cy="444" r="33" fill="#372436"/>
+    <circle cx="434" cy="431" r="10" fill="#ffffff"/>
+    <circle cx="606" cy="431" r="10" fill="#ffffff"/>
+    <path d="M480 494C497 507 521 507 538 494" fill="none" stroke="#b60d63" stroke-width="11" stroke-linecap="round"/>
+    <ellipse cx="391" cy="491" rx="30" ry="17" fill="#ff8fc2" opacity="0.62"/>
+    <ellipse cx="627" cy="491" rx="30" ry="17" fill="#ff8fc2" opacity="0.62"/>
+    <path d="M350 180L395 257L331 274Z" fill="#272a34"/>
+    <path d="M668 180L623 257L687 274Z" fill="#272a34"/>
+    <path d="M509 173C525 173 538 185 538 201C538 217 525 229 509 229C493 229 480 217 480 201C480 185 493 173 509 173Z" fill="#f5cf35"/>
   </g>
 
-  <path d="M129 157H177" stroke="#0F172A" stroke-width="28" stroke-linecap="round" opacity="0.22"/>
-  <path d="M131 154H172" stroke="url(#arrow)" stroke-width="18" stroke-linecap="round"/>
-  <path d="M160 132L190 154L160 176" fill="none" stroke="url(#arrow)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="83" cy="67" r="7" fill="#99F6E4" opacity="0.95"/>
+  <g filter="url(#glow)">
+    <path d="M244 612H369L401 557L451 695L506 512L552 612H778" fill="none" stroke="#ffffff" stroke-width="21" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M244 612H369L401 557L451 695L506 512L552 612H778" fill="none" stroke="url(#pinkStroke)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g>
+    <ellipse cx="509" cy="677" rx="122" ry="42" fill="none" stroke="url(#pinkStroke)" stroke-width="18"/>
+    <path d="M387 677V737C387 760 442 779 509 779C576 779 631 760 631 737V677" fill="none" stroke="url(#pinkStroke)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M387 708C387 731 442 750 509 750C576 750 631 731 631 708" fill="none" stroke="#ff8ecb" stroke-width="11" stroke-linecap="round"/>
+  </g>
+
+  <text x="512" y="905" text-anchor="middle"
+        font-family="Orbitron, Eurostile, Montserrat, Segoe UI, Arial, sans-serif"
+        font-size="112" font-weight="800" letter-spacing="2"
+        fill="url(#pinkStroke)">SQLPulse</text>
 </svg>

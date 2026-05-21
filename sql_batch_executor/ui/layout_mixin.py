@@ -76,7 +76,7 @@ class LayoutMixin:
 
         logo_row = QHBoxLayout()
         logo_row.setSpacing(10)
-        brand_badge = QLabel("SQL")
+        brand_badge = QLabel("SP")
         brand_badge.setAlignment(Qt.AlignCenter)
         brand_badge.setFixedSize(44, 36)
         brand_badge.setStyleSheet(f"""
@@ -90,12 +90,12 @@ class LayoutMixin:
         logo_row.addWidget(brand_badge)
         brand_col = QVBoxLayout()
         brand_col.setSpacing(0)
-        sql_lbl = QLabel("SQL 批量执行器")
+        sql_lbl = QLabel("SqlPulse")
         sql_lbl.setStyleSheet(
             f"font-size: 16px; font-weight: 700; color: {theme.TEXT_PRIMARY}; background: transparent; border: none;"
         )
         brand_col.addWidget(sql_lbl)
-        sub_lbl = QLabel("Batch Executor")
+        sub_lbl = QLabel("Batch DML Runner")
         sub_lbl.setStyleSheet(f"font-size: 12px; color: {theme.TEXT_MUTED}; background: transparent; border: none;")
         brand_col.addWidget(sub_lbl)
         logo_row.addLayout(brand_col)

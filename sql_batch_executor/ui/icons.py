@@ -4,7 +4,17 @@ from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QIcon, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 
-from sql_batch_executor.app.resources import APP_ICON_ICO_PATH, APP_ICON_PATH
+from sql_batch_executor.app.resources import APP_ICON_ICO_PATH, APP_ICON_PATH, APP_ICON_PNG_PATH
+
+
+def _render_png_icon(size: int) -> QPixmap:
+    if not APP_ICON_PNG_PATH.exists():
+        return QPixmap()
+
+    pixmap = QPixmap(str(APP_ICON_PNG_PATH))
+    if pixmap.isNull():
+        return QPixmap()
+    return pixmap.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
 
 def _render_svg_icon(size: int) -> QPixmap:
@@ -23,6 +33,11 @@ def _render_svg_icon(size: int) -> QPixmap:
 
 
 def app_icon() -> QIcon:
+    if APP_ICON_PNG_PATH.exists():
+        icon = QIcon(str(APP_ICON_PNG_PATH))
+        if not icon.isNull():
+            return icon
+
     if APP_ICON_ICO_PATH.exists():
         icon = QIcon(str(APP_ICON_ICO_PATH))
         if not icon.isNull():
@@ -30,18 +45,26 @@ def app_icon() -> QIcon:
 
     icon = QIcon()
     for size in (16, 20, 24, 32, 48, 64, 128, 256):
-        pixmap = _render_svg_icon(size)
+        pixmap = _render_png_icon(size)
+        if pixmap.isNull():
+            pixmap = _render_svg_icon(size)
         if not pixmap.isNull():
             icon.addPixmap(pixmap)
     if icon.isNull():
+        if APP_ICON_PNG_PATH.exists():
+            return QIcon(str(APP_ICON_PNG_PATH))
         return QIcon(str(APP_ICON_PATH))
     return icon
 
 
 def app_icon_pixmap(size: int) -> QPixmap:
-    pixmap = _render_svg_icon(size)
+    pixmap = _render_png_icon(size)
+    if pixmap.isNull():
+        pixmap = _render_svg_icon(size)
     if not pixmap.isNull():
         return pixmap
+    if APP_ICON_PNG_PATH.exists():
+        return QIcon(str(APP_ICON_PNG_PATH)).pixmap(size, size)
     return QIcon(str(APP_ICON_PATH)).pixmap(size, size)
 
 
